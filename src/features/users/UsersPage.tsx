@@ -301,9 +301,9 @@ export default function UsersPage() {
 
       {/* Edit User Modal */}
       {editingUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end z-50">
-          <div className="w-full bg-white rounded-t-2xl p-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl p-4 max-h-[90vh] overflow-y-auto flex flex-col">
+            <div className="p-4 flex items-center justify-between flex-shrink-0 border-b border-gray-200">
               <h2 className="text-lg font-bold text-gray-900">Editar Usuario</h2>
               <button
                 onClick={() => setEditingUser(null)}
@@ -313,7 +313,7 @@ export default function UsersPage() {
               </button>
             </div>
 
-            <div className="space-y-3">
+            <div className="p-4 space-y-3 overflow-y-auto flex-1">
               <Input
                 label="Usuario *"
                 value={editForm.username}
