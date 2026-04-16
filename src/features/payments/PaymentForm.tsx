@@ -44,7 +44,7 @@ export default function PaymentForm() {
     queryFn: async () => {
       let q = supabase
         .from('loans')
-        .select('*, clients(full_name, cedula)')
+        .select('*, clients(full_name, cedula, phone)')
         .eq('team_id', user!.team_id!)
         .in('status', ['active', 'overdue', 'pending'])
       if (user?.role === 'cobrador') q = q.eq('created_by', user.id)
