@@ -19,6 +19,7 @@ export interface User {
   pin_hash: string
   role: UserRole
   team_id: string | null
+  balance: number
   created_at: string
 }
 
@@ -27,6 +28,7 @@ export interface AuthUser {
   username: string
   role: UserRole
   team_id: string | null
+  balance: number
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
