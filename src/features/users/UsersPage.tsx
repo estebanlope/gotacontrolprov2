@@ -29,12 +29,12 @@ export default function UsersPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ username: '', pin: '', role: 'cobrador' as UserRole, balance: '' })
+  const [form, setForm] = useState({ username: '', pin: '', role: 'cobrador' as UserRole, assigned_capital: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [capitalBaseInput, setCapitalBaseInput] = useState('')
   const [editingCapital, setEditingCapital] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [editForm, setEditForm] = useState({ username: '', pin: '', role: 'cobrador' as UserRole, balance: '' })
+  const [editForm, setEditForm] = useState({ username: '', pin: '', role: 'cobrador' as UserRole, assigned_capital: '' })
   const [editErrors, setEditErrors] = useState<Record<string, string>>({})
 
   const { data: users = [], isLoading } = useQuery<User[]>({
@@ -60,16 +60,17 @@ export default function UsersPage() {
     enabled: !!user?.team_id,
   })
 
-  const totalBalance = users.reduce((sum, u) => sum + u.balance, 0)
-  const availableBalance = (config?.capital_base ?? 0) - totalBalance
+  // Validate using assigned_capital sum (not balance)
+  const totalAssigned = users.reduce((sum, u) => sum + (u.assigned_capital ?? 0), 0)
+  const availableCapital = (config?.capital_base ?? 0) - totalAssigned
 
   const validate = () => {
     const errs: Record<string, string> = {}
     if (!form.username.trim()) errs.username = 'Usuario requerido'
     if (form.pin.length !== 6 || !/^\d{6}$/.test(form.pin)) errs.pin = 'PIN debe ser exactamente 6 dígitos'
-    const balance = parseFloat(form.balance)
-    if (isNaN(balance) || balance < MIN_BALANCE) errs.balance = `Saldo mínimo es ${formatCurrency(MIN_BALANCE)}`
-    if (balance > availableBalance) errs.balance = `Saldo excede el capital base disponible. Disponible: ${formatCurrency(availableBalance)}`
+    const assigned = parseFloat(form.assigned_capital)
+    if (isNaN(assigned) || assigned < MIN_BALANCE) errs.assigned_capital = `Capital mínimo es ${formatCurrency(MIN_BALANCE)}`
+    else if (assigned > availableCapital) errs.assigned_capital = `Excede el capital base disponible. Disponible: ${formatCurrency(availableCapital)}`
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -77,11 +78,11 @@ export default function UsersPage() {
   const validateEdit = () => {
     const errs: Record<string, string> = {}
     if (!editForm.username.trim()) errs.username = 'Usuario requerido'
-    const balance = parseFloat(editForm.balance)
-    const currentBalance = editingUser?.balance ?? 0
-    const balanceDiff = balance - currentBalance
-    if (isNaN(balance) || balance < MIN_BALANCE) errs.balance = `Saldo mínimo es ${formatCurrency(MIN_BALANCE)}`
-    if (balanceDiff > availableBalance) errs.balance = `Saldo excede el capital base disponible. Disponible: ${formatCurrency(availableBalance)}`
+    const assigned = parseFloat(editForm.assigned_capital)
+    const currentAssigned = editingUser?.assigned_capital ?? 0
+    const diff = assigned - currentAssigned
+    if (isNaN(assigned) || assigned < MIN_BALANCE) errs.assigned_capital = `Capital mínimo es ${formatCurrency(MIN_BALANCE)}`
+    else if (diff > availableCapital) errs.assigned_capital = `Excede el capital base disponible. Disponible: ${formatCurrency(availableCapital)}`
     setEditErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -95,14 +96,14 @@ export default function UsersPage() {
         p_pin: form.pin,
         p_role: form.role,
         p_team_id: user!.team_id!,
-        p_balance: parseFloat(form.balance),
+        p_assigned_capital: parseFloat(form.assigned_capital),
       })
       if (error) throw error
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team-users'] })
       setShowForm(false)
-      setForm({ username: '', pin: '', role: 'cobrador', balance: '' })
+      setForm({ username: '', pin: '', role: 'cobrador', assigned_capital: '' })
     }
   })
 
@@ -126,10 +127,25 @@ export default function UsersPage() {
   const editMutation = useMutation({
     mutationFn: async () => {
       if (!validateEdit()) throw new Error('Validation failed')
+      const newAssigned = parseFloat(editForm.assigned_capital)
+      const oldAssigned = editingUser?.assigned_capital ?? 0
+      const diff = newAssigned - oldAssigned
+
+      // Fetch current balance to apply diff
+      const { data: currentUser } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('id', editingUser!.id)
+        .single()
+
+      const currentBalance = currentUser?.balance ?? 0
+      const newBalance = Math.max(0, currentBalance + diff)
+
       const updates: Record<string, unknown> = {
         username: editForm.username.trim(),
         role: editForm.role,
-        balance: parseFloat(editForm.balance),
+        assigned_capital: newAssigned,
+        balance: newBalance,
       }
       const { error } = await supabase
         .from('users')
@@ -139,8 +155,9 @@ export default function UsersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team-users'] })
+      queryClient.invalidateQueries({ queryKey: ['user-balance', editingUser?.id] })
       setEditingUser(null)
-      setEditForm({ username: '', pin: '', role: 'cobrador', balance: '' })
+      setEditForm({ username: '', pin: '', role: 'cobrador', assigned_capital: '' })
     }
   })
 
@@ -160,7 +177,7 @@ export default function UsersPage() {
       username: u.username,
       pin: '',
       role: u.role,
-      balance: String(u.balance)
+      assigned_capital: String(u.assigned_capital ?? 0)
     })
     setEditErrors({})
   }
@@ -221,7 +238,7 @@ export default function UsersPage() {
           ) : (
             <>
               <p className="text-2xl font-bold text-blue-700">{formatCurrency(config?.capital_base ?? 0)}</p>
-              <p className="text-xs text-blue-600 mt-1">Total asignado: {formatCurrency(totalBalance)} | Disponible: {formatCurrency(availableBalance)}</p>
+              <p className="text-xs text-blue-600 mt-1">Capital asignado: {formatCurrency(totalAssigned)} | Disponible: {formatCurrency(availableCapital)}</p>
             </>
           )}
           {capitalMutation.error && <p className="text-red-600 text-xs mt-1">Error al guardar. Intenta de nuevo.</p>}
@@ -236,14 +253,15 @@ export default function UsersPage() {
               <Input label="PIN (6 dígitos) *" type="password" inputMode="numeric" maxLength={6} value={form.pin} onChange={e => set('pin', e.target.value.replace(/\D/g, '').slice(0, 6))} error={errors.pin} placeholder="••••••" />
               <Select label="Rol *" options={ROLE_OPTIONS} value={form.role} onChange={e => set('role', e.target.value as UserRole)} />
               <Input
-                label={`Saldo inicial *`}
+                label="Capital asignado *"
                 type="number"
                 inputMode="decimal"
-                value={form.balance}
-                onChange={e => set('balance', e.target.value)}
-                error={errors.balance}
+                value={form.assigned_capital}
+                onChange={e => set('assigned_capital', e.target.value)}
+                error={errors.assigned_capital}
                 placeholder={String(MIN_BALANCE)}
                 min={String(MIN_BALANCE)}
+                hint={`Disponible: ${formatCurrency(availableCapital)}`}
               />
               {mutation.error && (
                 <p className="text-red-600 text-sm">
@@ -277,7 +295,8 @@ export default function UsersPage() {
               <div className="flex-1">
                 <p className="font-semibold text-gray-900">{u.username}</p>
                 <p className="text-xs text-gray-400">{ROLE_LABELS[u.role]} · Creado {formatDate(u.created_at)}</p>
-                <p className="text-sm font-semibold text-blue-700 mt-1">Saldo: {formatCurrency(u.balance)}</p>
+                <p className="text-sm font-semibold text-blue-700 mt-1">Capital asignado: {formatCurrency(u.assigned_capital ?? 0)}</p>
+                <p className="text-sm text-green-700">Saldo disponible: {formatCurrency(u.balance ?? 0)}</p>
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${
@@ -302,7 +321,7 @@ export default function UsersPage() {
       {/* Edit User Modal */}
       {editingUser && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-md bg-white rounded-2xl p-4 max-h-[90vh] overflow-y-auto flex flex-col">
+          <div className="w-full max-w-md bg-white rounded-2xl flex flex-col" style={{ maxHeight: '85vh' }}>
             <div className="p-4 flex items-center justify-between flex-shrink-0 border-b border-gray-200">
               <h2 className="text-lg font-bold text-gray-900">Editar Usuario</h2>
               <button
@@ -329,15 +348,24 @@ export default function UsersPage() {
                 onChange={e => setEdit('role', e.target.value as UserRole)}
               />
               <Input
-                label={`Saldo *`}
+                label="Capital asignado *"
                 type="number"
                 inputMode="decimal"
-                value={editForm.balance}
-                onChange={e => setEdit('balance', e.target.value)}
-                error={editErrors.balance}
+                value={editForm.assigned_capital}
+                onChange={e => setEdit('assigned_capital', e.target.value)}
+                error={editErrors.assigned_capital}
                 placeholder={String(MIN_BALANCE)}
                 min={String(MIN_BALANCE)}
+                hint={`Disponible para asignar: ${formatCurrency(availableCapital)}`}
               />
+              {/* Read-only balance info */}
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-xs text-gray-500 font-medium">💰 Saldo actual</p>
+                <p className="text-lg font-bold text-green-700 mt-1">{formatCurrency(editingUser.balance ?? 0)}</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Se ajustará automáticamente al cambiar el capital asignado
+                </p>
+              </div>
 
               {editMutation.error && (
                 <p className="text-red-600 text-sm">
@@ -346,11 +374,11 @@ export default function UsersPage() {
                     : ''}
                 </p>
               )}
+            </div>
 
-              <div className="flex gap-2 pt-2">
-                <Button variant="secondary" fullWidth onClick={() => setEditingUser(null)}>Cancelar</Button>
-                <Button fullWidth isLoading={editMutation.isPending} onClick={() => editMutation.mutate()}>Guardar</Button>
-              </div>
+            <div className="p-4 border-t border-gray-200 flex gap-2 flex-shrink-0 bg-white">
+              <Button variant="secondary" fullWidth onClick={() => setEditingUser(null)}>Cancelar</Button>
+              <Button fullWidth isLoading={editMutation.isPending} onClick={() => editMutation.mutate()}>Guardar</Button>
             </div>
           </div>
         </div>

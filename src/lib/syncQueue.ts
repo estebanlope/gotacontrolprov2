@@ -37,6 +37,27 @@ export async function syncAll(): Promise<void> {
             if (item.id !== undefined) await db.sync_queue.delete(item.id)
           }
         } else {
+          // Apply balance delta if this operation affects balance
+          if (item.affects_balance && item.balance_delta !== undefined && item.balance_user_id) {
+            try {
+              const { data: currentUser } = await supabase
+                .from('users')
+                .select('balance')
+                .eq('id', item.balance_user_id)
+                .single()
+
+              if (currentUser) {
+                const newBalance = Math.max(0, (currentUser.balance ?? 0) + item.balance_delta)
+                await supabase
+                  .from('users')
+                  .update({ balance: newBalance })
+                  .eq('id', item.balance_user_id)
+              }
+            } catch (balErr) {
+              console.error('[SyncQueue] Error applying balance delta:', balErr)
+            }
+          }
+
           // Mark the local record as synced
           await markLocalSynced(item.table_name, item.record_id)
           if (item.id !== undefined) await db.sync_queue.delete(item.id)
@@ -72,12 +93,15 @@ async function markLocalSynced(table: SyncTable, recordId: string): Promise<void
 
 /**
  * Adds a record to the sync queue for later processing.
+ * Optionally tracks a balance delta to apply when the record syncs.
  */
 export async function enqueueSync(
   table: SyncTable,
   recordId: string,
   action: 'insert' | 'update',
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  balanceDelta?: number,
+  balanceUserId?: string
 ): Promise<void> {
   await db.sync_queue.add({
     table_name: table,
@@ -85,7 +109,10 @@ export async function enqueueSync(
     action,
     payload,
     created_at: new Date().toISOString(),
-    retry_count: 0
+    retry_count: 0,
+    affects_balance: balanceDelta !== undefined,
+    balance_delta: balanceDelta,
+    balance_user_id: balanceUserId,
   })
 }
 
@@ -103,4 +130,3 @@ export function initSyncListener(): void {
     syncAll()
   }
 }
-

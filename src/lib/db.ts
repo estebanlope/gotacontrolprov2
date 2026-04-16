@@ -47,6 +47,10 @@ class PersonalProjectDB extends Dexie {
       expenses: 'id, team_id, created_by, synced',
       sync_queue: '++id, table_name, record_id, action, created_at'
     })
+    this.version(2).stores({
+      // Add affects_balance index to sync_queue for filtering pending balance ops
+      sync_queue: '++id, table_name, record_id, action, created_at, affects_balance'
+    })
   }
 }
 

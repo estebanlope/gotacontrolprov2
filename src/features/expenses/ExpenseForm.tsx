@@ -65,26 +65,18 @@ export default function ExpenseForm() {
         const { error } = await supabase.from('expenses').upsert(newExpense)
         if (error) throw error
 
-        // Update user balance: subtract expense amount
-        const { error: balanceErr } = await supabase.rpc('subtract_from_user_balance', {
-          p_user_id: user!.id,
-          p_amount: amount
-        })
-        if (balanceErr) {
-          // If RPC doesn't exist, do it manually
-          const { data: currentUser } = await supabase
+        // Update user balance: subtract expense amount (fetch current to avoid stale value)
+        const { data: currentUser } = await supabase
+          .from('users')
+          .select('balance')
+          .eq('id', user!.id)
+          .single()
+        if (currentUser) {
+          const newBalance = Math.max(0, (currentUser.balance ?? 0) - amount)
+          await supabase
             .from('users')
-            .select('balance')
+            .update({ balance: newBalance })
             .eq('id', user!.id)
-            .single()
-
-          if (currentUser) {
-            const newBalance = Math.max(0, (currentUser.balance ?? 0) - amount)
-            await supabase
-              .from('users')
-              .update({ balance: newBalance })
-              .eq('id', user!.id)
-          }
         }
 
         await db.expenses.update(id, { synced: true })
@@ -103,7 +95,7 @@ export default function ExpenseForm() {
           }).catch(() => {})
         }
       } else {
-        await enqueueSync('expenses', id, 'insert', newExpense as unknown as Record<string, unknown>)
+        await enqueueSync('expenses', id, 'insert', newExpense as unknown as Record<string, unknown>, -amount, user!.id)
       }
 
       return newExpense

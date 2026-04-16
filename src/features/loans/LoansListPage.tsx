@@ -5,7 +5,7 @@ import PageHeader from '@/components/layout/PageHeader'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { formatDate, formatCurrency, todayISO } from '@/lib/utils'
-import { loanStatusLabel, loanStatusColors, paymentTypeLabel } from '@/lib/loanCalculations'
+import { loanStatusLabel, loanStatusColors, paymentTypeLabel, calcNumInstallments } from '@/lib/loanCalculations'
 import type { LoanStatus } from '@/types'
 import { Plus, DollarSign } from 'lucide-react'
 
@@ -75,7 +75,12 @@ export default function LoansListPage() {
           </div>
         )}
 
-        {filtered.map(loan => (
+        {filtered.map(loan => {
+          const totalAmount = loan.capital * (1 + loan.interest_rate / 100)
+          const numInstallments = calcNumInstallments(loan.payment_type, loan.term_weeks)
+          const installment = numInstallments > 0 ? totalAmount / numInstallments : 0
+
+          return (
           <Card key={loan.id} onClick={() => navigate(`/prestamos/${loan.id}`)}>
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
@@ -85,9 +90,12 @@ export default function LoansListPage() {
                   </span>
                   <span className="text-xs text-gray-400">{paymentTypeLabel(loan.payment_type)}</span>
                 </div>
+                {loan.client_name && (
+                  <p className="text-sm font-semibold text-gray-700 truncate mb-0.5">👤 {loan.client_name}</p>
+                )}
                 <p className="font-bold text-gray-900 text-lg">{formatCurrency(loan.capital)}</p>
                 <p className="text-xs text-gray-500">
-                  Interés: {loan.interest_rate}% · Total: {formatCurrency(loan.capital * (1 + loan.interest_rate / 100))}
+                  Interés: {loan.interest_rate}% · Total: {formatCurrency(totalAmount)} · Cuota: {formatCurrency(installment)}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">
                   Desembolso: {formatDate(loan.disbursement_date)} · Vence: {formatDate(loan.due_date)}
@@ -103,7 +111,8 @@ export default function LoansListPage() {
               </svg>
             </div>
           </Card>
-        ))}
+          )
+        })}
 
         <p className="text-center text-xs text-gray-400 py-2">
           {filtered.length} préstamo{filtered.length !== 1 ? 's' : ''}

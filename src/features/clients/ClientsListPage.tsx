@@ -14,11 +14,13 @@ export default function ClientsListPage() {
   const { data: clients = [], isLoading } = useClients()
   const [search, setSearch] = useState('')
 
-  const filtered = clients.filter(c =>
-    c.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    c.cedula.includes(search) ||
-    c.phone.includes(search)
-  )
+  const filtered = clients
+    .filter(c =>
+      c.full_name.toLowerCase().includes(search.toLowerCase()) ||
+      c.cedula.includes(search) ||
+      c.phone.includes(search)
+    )
+    .sort((a, b) => a.full_name.localeCompare(b.full_name, 'es', { sensitivity: 'base' }))
 
   return (
     <div>

@@ -13,6 +13,7 @@ import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import { formatDate, formatCurrency, todayISO } from '@/lib/utils'
+import { Search } from 'lucide-react'
 import type { Loan, Payment, PaymentMethod, LoanScheduleEntry } from '@/types'
 
 const METHOD_OPTIONS = [
@@ -34,6 +35,8 @@ export default function PaymentForm() {
     payment_date: todayISO(),
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [loanSearch, setLoanSearch] = useState('')
+  const [showLoanDropdown, setShowLoanDropdown] = useState(false)
 
   // Load loans for selector (non-paid)
   const { data: loans = [] } = useQuery<Loan[]>({
@@ -91,25 +94,17 @@ export default function PaymentForm() {
         const { error } = await supabase.from('payments').upsert(newPayment)
         if (error) throw error
 
-        // Update user balance: add payment amount
-        const { error: balanceErr } = await supabase.rpc('add_to_user_balance', {
-          p_user_id: user!.id,
-          p_amount: amount
-        })
-        if (balanceErr) {
-          // If RPC doesn't exist, do it manually
-          const { data: currentUser } = await supabase
+        // Update user balance: add payment amount (fetch current to avoid stale value)
+        const { data: currentUser } = await supabase
+          .from('users')
+          .select('balance')
+          .eq('id', user!.id)
+          .single()
+        if (currentUser) {
+          await supabase
             .from('users')
-            .select('balance')
+            .update({ balance: (currentUser.balance ?? 0) + amount })
             .eq('id', user!.id)
-            .single()
-
-          if (currentUser) {
-            await supabase
-              .from('users')
-              .update({ balance: (currentUser.balance ?? 0) + amount })
-              .eq('id', user!.id)
-          }
         }
 
         // Fetch all payments to determine which schedule entries to mark paid
@@ -177,7 +172,7 @@ export default function PaymentForm() {
           }).catch(() => {})
         }
       } else {
-        await enqueueSync('payments', id, 'insert', newPayment as unknown as Record<string, unknown>)
+        await enqueueSync('payments', id, 'insert', newPayment as unknown as Record<string, unknown>, amount, user!.id)
       }
 
       return newPayment
@@ -197,18 +192,61 @@ export default function PaymentForm() {
     return { value: l.id, label: `${c?.full_name ?? 'Cliente'} — ${formatCurrency(l.capital)}` }
   })
 
+  const filteredLoanOptions = loanSearch.trim()
+    ? loanOptions.filter(o => o.label.toLowerCase().includes(loanSearch.toLowerCase()))
+    : loanOptions
+
+  const selectedLoanOption = loanOptions.find(o => o.value === form.loan_id)
+
   return (
     <div>
       <PageHeader title="Registrar Pago" showBack />
       <form className="p-4 space-y-4" onSubmit={e => { e.preventDefault(); mutation.mutate() }}>
-        <Select
-          label="Préstamo *"
-          options={loanOptions}
-          placeholder="Selecciona un préstamo"
-          value={form.loan_id}
-          onChange={e => set('loan_id', e.target.value)}
-          error={errors.loan_id}
-        />
+
+        {/* Loan search */}
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-gray-700">Préstamo *</label>
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={selectedLoanOption && !showLoanDropdown ? selectedLoanOption.label : loanSearch}
+              onChange={e => {
+                setLoanSearch(e.target.value)
+                setShowLoanDropdown(true)
+                if (!e.target.value) set('loan_id', '')
+              }}
+              onFocus={() => setShowLoanDropdown(true)}
+              onBlur={() => setTimeout(() => setShowLoanDropdown(false), 150)}
+              placeholder="Buscar por nombre de cliente..."
+              className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {showLoanDropdown && filteredLoanOptions.length > 0 && (
+              <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                {filteredLoanOptions.map(o => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onMouseDown={() => {
+                      set('loan_id', o.value)
+                      setLoanSearch('')
+                      setShowLoanDropdown(false)
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0"
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {showLoanDropdown && loanSearch && filteredLoanOptions.length === 0 && (
+              <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 text-sm text-gray-400">
+                Sin resultados
+              </div>
+            )}
+          </div>
+          {errors.loan_id && <p className="text-xs text-red-600">{errors.loan_id}</p>}
+        </div>
 
         {selectedLoan && (
           <Card className="bg-gray-50">

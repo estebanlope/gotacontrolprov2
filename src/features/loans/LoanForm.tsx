@@ -164,12 +164,16 @@ export default function LoanForm() {
         const { error: schedErr } = await supabase.from('loan_schedule').upsert(scheduleWithIds)
         if (schedErr) throw schedErr
 
-        // Update user balance: reduce by capital
-        const { error: balanceErr } = await supabase
+        // Update user balance: reduce by capital (fetch current to avoid stale session value)
+        const { data: currentUser } = await supabase
           .from('users')
-          .update({ balance: user!.balance! - capital })
+          .select('balance')
           .eq('id', user!.id)
-        if (balanceErr) throw balanceErr
+          .single()
+        if (currentUser) {
+          const newBalance = Math.max(0, (currentUser.balance ?? 0) - capital)
+          await supabase.from('users').update({ balance: newBalance }).eq('id', user!.id)
+        }
 
         await db.loans.update(id, { synced: true })
         await db.loan_schedule.where('loan_id').equals(id).modify({ synced: true })
@@ -185,7 +189,7 @@ export default function LoanForm() {
           }).catch(() => {})
         }
       } else {
-        await enqueueSync('loans', id, 'insert', newLoan as unknown as Record<string, unknown>)
+        await enqueueSync('loans', id, 'insert', newLoan as unknown as Record<string, unknown>, -capital, user!.id)
         for (const s of scheduleWithIds) {
           await enqueueSync('loan_schedule', s.id, 'insert', s as unknown as Record<string, unknown>)
         }

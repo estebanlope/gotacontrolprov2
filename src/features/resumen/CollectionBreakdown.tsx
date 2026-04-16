@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import Card, { CardTitle } from '@/components/ui/Card'
 import StatCard from '@/components/ui/StatCard'
 import { formatCurrency } from '@/lib/utils'
+import { usePendingBalanceSync } from '@/hooks/usePendingBalanceSync'
 
 interface Props {
   teamId: string
@@ -16,6 +17,7 @@ interface Props {
 
 export default function CollectionBreakdown({ teamId, userId, isAdmin, dateFrom, dateTo, preset }: Props) {
   const navigate = useNavigate()
+  const { hasPending, count: pendingCount } = usePendingBalanceSync()
 
   const { data: userData } = useQuery({
     queryKey: ['user-balance', userId],
@@ -148,8 +150,13 @@ export default function CollectionBreakdown({ teamId, userId, isAdmin, dateFrom,
               <p className="text-sm text-gray-400 mt-0.5">
                 {isAdmin ? 'Suma de saldos de todos los usuarios' : 'Tu saldo asignado'}
               </p>
+              {hasPending && (
+                <p className="text-xs text-amber-600 font-medium mt-1">
+                  ⚠️ {pendingCount} operación{pendingCount > 1 ? 'es' : ''} pendiente{pendingCount > 1 ? 's' : ''} de sincronizar
+                </p>
+              )}
             </div>
-            <span className="text-lg font-bold text-blue-700">
+            <span className={`text-lg font-bold ${hasPending ? 'text-amber-600' : 'text-blue-700'}`}>
               {formatCurrency(dynamicBalance)}
             </span>
           </div>

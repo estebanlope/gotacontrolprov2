@@ -19,6 +19,7 @@ export interface User {
   pin_hash: string
   role: UserRole
   team_id: string | null
+  assigned_capital: number
   balance: number
   created_at: string
 }
@@ -28,6 +29,7 @@ export interface AuthUser {
   username: string
   role: UserRole
   team_id: string | null
+  assigned_capital: number
   balance: number
 }
 
@@ -125,5 +127,8 @@ export interface SyncQueueItem {
   payload: Record<string, unknown>
   created_at: string
   retry_count: number
+  affects_balance?: boolean
+  balance_delta?: number
+  balance_user_id?: string
 }
 

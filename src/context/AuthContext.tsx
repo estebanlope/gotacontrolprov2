@@ -46,7 +46,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         username: data.username as string,
         role: data.role as UserRole,
         team_id: data.team_id as string | null,
-        balance: data.balance as number ?? 0
+        assigned_capital: (data.assigned_capital as number) ?? 0,
+        balance: (data.balance as number) ?? 0
       }
 
       setUser(authUser)

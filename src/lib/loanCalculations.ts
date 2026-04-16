@@ -2,6 +2,15 @@ import { addDays, addMonths } from 'date-fns'
 import type { PaymentType, LoanStatus, LoanScheduleEntry, Payment } from '@/types'
 
 /**
+ * Returns today's date string (YYYY-MM-DD) in Colombian time (UTC-5).
+ */
+function todayColombia(): string {
+  const offset = -5 * 60
+  const local = new Date(Date.now() + offset * 60 * 1000)
+  return local.toISOString().split('T')[0]
+}
+
+/**
  * Rounds a number UP to the next multiple of 5.
  * If already a multiple of 5, returns the same value.
  */
@@ -138,20 +147,14 @@ export function calcLoanStatus(
     return 'paid'
   }
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const today = todayColombia()
 
   if (nextPaymentDate) {
-    const nextDate = new Date(nextPaymentDate)
-    nextDate.setHours(0, 0, 0, 0)
-
-    if (today > nextDate) return 'overdue'
+    if (today > nextPaymentDate) return 'overdue'
   }
 
   if (payments.length === 0 && nextPaymentDate) {
-    const nextDate = new Date(nextPaymentDate)
-    nextDate.setHours(0, 0, 0, 0)
-    if (today < nextDate) return 'pending'
+    if (today < nextPaymentDate) return 'pending'
   }
 
   return 'active'
@@ -228,4 +231,3 @@ export function loanStatusColors(status: LoanStatus): string {
   }
   return colors[status]
 }
-
