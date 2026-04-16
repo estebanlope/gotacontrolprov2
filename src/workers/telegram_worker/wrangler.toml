@@ -1,0 +1,13 @@
+name = "personalproject-telegram-worker"
+main = "src/worker.ts"
+compatibility_date = "2024-01-01"
+
+[triggers]
+crons = ["0 13 * * *", "0 1 * * *"]
+
+[vars]
+SUPABASE_URL = "https://znyqjnvpjowygerruxwi.supabase.co"
+# WARNING: Move this to a secret before going to production
+# npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+# SUPABASE_SERVICE_ROLE_KEY = "tu_service_role_key_aqui"
+
