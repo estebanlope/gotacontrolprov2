@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { v4 as uuidv4 } from 'uuid'
 import imageCompression from 'browser-image-compression'
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
@@ -41,6 +41,18 @@ export default function ClientForm() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { id } = useParams<{ id?: string }>()
+  const isEdit = !!id
+
+  const { data: existingClient } = useQuery<Client | null>({
+    queryKey: ['client', id],
+    queryFn: async () => {
+      if (!id) return null
+      const { data } = await supabase.from('clients').select('*').eq('id', id).single()
+      return data
+    },
+    enabled: isEdit,
+  })
 
   const [form, setForm] = useState({
     full_name: '',
@@ -55,6 +67,23 @@ export default function ClientForm() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [initialized, setInitialized] = useState(false)
+
+  useEffect(() => {
+    if (existingClient && !initialized) {
+      setForm({
+        full_name: existingClient.full_name,
+        cedula: existingClient.cedula,
+        phone: existingClient.phone,
+        address: existingClient.address,
+        notes: existingClient.notes ?? '',
+      })
+      setLat(existingClient.lat)
+      setLng(existingClient.lng)
+      setPhotoPreview(existingClient.photo_url)
+      setInitialized(true)
+    }
+  }, [existingClient, initialized])
 
   const set = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -88,13 +117,13 @@ export default function ClientForm() {
     mutationFn: async () => {
       if (!validate()) throw new Error('Validation failed')
 
-      const id = uuidv4()
-      let photo_url: string | null = null
+      const clientId = isEdit ? id! : uuidv4()
+      let photo_url: string | null = existingClient?.photo_url ?? null
 
       // Upload photo if present and online
       if (photoFile && navigator.onLine) {
         const ext = photoFile.name.split('.').pop()
-        const path = `${user!.team_id}/${id}.${ext}`
+        const path = `${user!.team_id}/${clientId}.${ext}`
         const { error: uploadError } = await supabase.storage
           .from('client-photos')
           .upload(path, photoFile, { upsert: true })
@@ -104,10 +133,10 @@ export default function ClientForm() {
         }
       }
 
-      const newClient: Client = {
-        id,
+      const clientData: Client = {
+        id: clientId,
         team_id: user!.team_id!,
-        created_by: user!.id,
+        created_by: isEdit ? (existingClient?.created_by ?? user!.id) : user!.id,
         full_name: form.full_name.trim(),
         cedula: form.cedula.trim(),
         phone: form.phone.trim(),
@@ -116,31 +145,32 @@ export default function ClientForm() {
         lng,
         notes: form.notes.trim() || null,
         photo_url,
-        created_at: new Date().toISOString(),
+        created_at: isEdit ? (existingClient?.created_at ?? new Date().toISOString()) : new Date().toISOString(),
       }
 
       // Save locally always
-      await db.clients.put({ ...newClient, synced: false })
+      await db.clients.put({ ...clientData, synced: false })
 
       if (navigator.onLine) {
-        const { error } = await supabase.from('clients').upsert(newClient)
+        const { error } = await supabase.from('clients').upsert(clientData)
         if (error) throw error
-        await db.clients.update(id, { synced: true })
+        await db.clients.update(clientId, { synced: true })
       } else {
-        await enqueueSync('clients', id, 'insert', newClient as unknown as Record<string, unknown>)
+        await enqueueSync('clients', clientId, isEdit ? 'update' : 'insert', clientData as unknown as Record<string, unknown>)
       }
 
-      return newClient
+      return clientData
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] })
+      if (isEdit) queryClient.invalidateQueries({ queryKey: ['client', id] })
       navigate(-1)
     }
   })
 
   return (
     <div>
-      <PageHeader title="Nuevo Cliente" showBack />
+      <PageHeader title={isEdit ? 'Editar Cliente' : 'Nuevo Cliente'} showBack />
 
       <form
         className="p-4 space-y-4"
@@ -158,7 +188,7 @@ export default function ClientForm() {
               <span className="text-3xl">📷</span>
             )}
           </div>
-          <p className="text-xs text-gray-400">Toca para agregar foto</p>
+          <p className="text-xs text-gray-400">Toca para {isEdit ? 'cambiar' : 'agregar'} foto</p>
           <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
         </div>
 
@@ -209,7 +239,7 @@ export default function ClientForm() {
         )}
 
         <Button type="submit" fullWidth isLoading={mutation.isPending}>
-          Guardar Cliente
+          {isEdit ? 'Guardar Cambios' : 'Guardar Cliente'}
         </Button>
       </form>
     </div>

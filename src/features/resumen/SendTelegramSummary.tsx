@@ -9,7 +9,7 @@ export default function SendTelegramSummary({ teamId, dateFrom, dateTo }: Props)
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
 
   const handleSend = async () => {
-    const workerUrl = import.meta.env.VITE_CF_WORKER_URL
+    const workerUrl = (import.meta.env.VITE_CF_WORKER_URL as string)?.replace(/\/$/, '')
     if (!workerUrl) { setStatus('error'); return }
 
     setStatus('sending')

@@ -1,10 +1,7 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { v4 as uuidv4 } from 'uuid'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { db } from '@/lib/db'
-import { enqueueSync } from '@/lib/syncQueue'
 import { useAuth } from '@/context/AuthContext'
 import PageHeader from '@/components/layout/PageHeader'
 import Input from '@/components/ui/Input'
@@ -19,9 +16,10 @@ const EXPENSE_TYPE_OPTIONS = [
   { value: 'otros', label: '📦 Otros' },
 ]
 
-export default function ExpenseForm() {
-  const { user } = useAuth()
+export default function ExpenseEditPage() {
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const queryClient = useQueryClient()
 
   const [form, setForm] = useState({
@@ -30,6 +28,29 @@ export default function ExpenseForm() {
     notes: '',
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [initialized, setInitialized] = useState(false)
+
+  // Cargar gasto
+  const { data: expense, isLoading } = useQuery<Expense | null>({
+    queryKey: ['expense', id],
+    queryFn: async () => {
+      const { data } = await supabase.from('expenses').select('*').eq('id', id!).single()
+      return data
+    },
+    enabled: !!id,
+  })
+
+  // Inicializar form
+  useEffect(() => {
+    if (expense && !initialized) {
+      setForm({
+        type: expense.type,
+        amount: String(expense.amount),
+        notes: expense.notes || '',
+      })
+      setInitialized(true)
+    }
+  }, [expense, initialized])
 
   const set = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -45,68 +66,37 @@ export default function ExpenseForm() {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      if (!validate()) throw new Error('Validation failed')
+      if (!validate() || !expense) throw new Error('Validation failed')
 
-      const id = uuidv4()
-      const amount = parseFloat(form.amount)
-      const newExpense: Expense = {
-        id,
-        team_id: user!.team_id!,
-        created_by: user!.id,
-        type: form.type,
-        amount,
-        notes: form.notes.trim() || null,
-        created_at: new Date().toISOString(),
-      }
+      const oldAmount = expense.amount
+      const newAmount = parseFloat(form.amount)
 
-      await db.expenses.put({ ...newExpense, synced: false })
-
-      if (navigator.onLine) {
-        const { error } = await supabase.from('expenses').upsert(newExpense)
-        if (error) throw error
-
-        // Update user balance: subtract expense amount
-        const { error: balanceErr } = await supabase.rpc('subtract_from_user_balance', {
-          p_user_id: user!.id,
-          p_amount: amount
+      // Actualizar gasto
+      const { error } = await supabase
+        .from('expenses')
+        .update({
+          type: form.type,
+          amount: newAmount,
+          notes: form.notes.trim() || null,
         })
-        if (balanceErr) {
-          // If RPC doesn't exist, do it manually
-          const { data: currentUser } = await supabase
-            .from('users')
-            .select('balance')
-            .eq('id', user!.id)
-            .single()
+        .eq('id', id!)
+      if (error) throw error
 
-          if (currentUser) {
-            const newBalance = Math.max(0, (currentUser.balance ?? 0) - amount)
-            await supabase
-              .from('users')
-              .update({ balance: newBalance })
-              .eq('id', user!.id)
-          }
-        }
+      // Actualizar balance: revertir monto viejo y restar monto nuevo
+      const { data: currentUser } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('id', user!.id)
+        .single()
 
-        await db.expenses.update(id, { synced: true })
-
-        // Notify Telegram
-        const workerUrl = (import.meta.env.VITE_CF_WORKER_URL as string)?.replace(/\/$/, '')
-        if (workerUrl) {
-          fetch(`${workerUrl}/notify/expense`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              expense: newExpense,
-              username: user!.username,
-              team_id: user!.team_id!
-            }),
-          }).catch(() => {})
-        }
-      } else {
-        await enqueueSync('expenses', id, 'insert', newExpense as unknown as Record<string, unknown>)
+      if (currentUser) {
+        // balance = balance + oldAmount (revertir) - newAmount (aplicar nueva)
+        const newBalance = Math.max(0, (currentUser.balance ?? 0) + oldAmount - newAmount)
+        await supabase
+          .from('users')
+          .update({ balance: newBalance })
+          .eq('id', user!.id)
       }
-
-      return newExpense
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] })
@@ -116,9 +106,18 @@ export default function ExpenseForm() {
     }
   })
 
+  if (isLoading || !initialized) {
+    return (
+      <div>
+        <PageHeader title="Editar Gasto" showBack />
+        <div className="p-4 text-center text-gray-400 py-12">Cargando...</div>
+      </div>
+    )
+  }
+
   return (
     <div>
-      <PageHeader title="Registrar Gasto" showBack />
+      <PageHeader title="Editar Gasto" showBack />
       <form className="p-4 space-y-4" onSubmit={e => { e.preventDefault(); mutation.mutate() }}>
         <Select
           label="Tipo de gasto *"
@@ -154,7 +153,7 @@ export default function ExpenseForm() {
         )}
 
         <Button type="submit" fullWidth size="lg" isLoading={mutation.isPending}>
-          Guardar Gasto
+          Guardar Cambios
         </Button>
       </form>
     </div>

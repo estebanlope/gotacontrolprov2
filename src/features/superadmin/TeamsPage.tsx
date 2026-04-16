@@ -7,19 +7,16 @@ import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import { formatDate } from '@/lib/utils'
-import { Plus, Shield } from 'lucide-react'
+import { Plus, Shield, Pencil } from 'lucide-react'
 import type { Team } from '@/types'
+
+const emptyForm = { name: '', telegram_bot_active: false, telegram_bot_token: '', telegram_bot_name: '', telegram_chat_id: '' }
 
 export default function TeamsPage() {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({
-    name: '',
-    telegram_bot_active: false,
-    telegram_bot_token: '',
-    telegram_bot_name: '',
-    telegram_chat_id: '',
-  })
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null)
+  const [form, setForm] = useState({ ...emptyForm })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const { data: teams = [], isLoading } = useQuery<Team[]>({
@@ -62,14 +59,50 @@ export default function TeamsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teams'] })
       setShowForm(false)
-      setForm({ name: '', telegram_bot_active: false, telegram_bot_token: '', telegram_bot_name: '', telegram_chat_id: '' })
+      setForm({ ...emptyForm })
     }
   })
+
+  const editMutation = useMutation({
+    mutationFn: async () => {
+      if (!validate() || !editingTeam) throw new Error('Validation failed')
+      const { error } = await supabase.from('teams').update({
+        name: form.name.trim(),
+        telegram_bot_active: form.telegram_bot_active,
+        telegram_bot_token: form.telegram_bot_token.trim() || null,
+        telegram_bot_name: form.telegram_bot_name.trim() || null,
+        telegram_chat_id: form.telegram_chat_id.trim() || null,
+      }).eq('id', editingTeam.id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] })
+      setEditingTeam(null)
+      setForm({ ...emptyForm })
+    }
+  })
+
+  const startEdit = (team: Team) => {
+    setEditingTeam(team)
+    setShowForm(false)
+    setForm({
+      name: team.name,
+      telegram_bot_active: team.telegram_bot_active ?? false,
+      telegram_bot_token: team.telegram_bot_token ?? '',
+      telegram_bot_name: team.telegram_bot_name ?? '',
+      telegram_chat_id: team.telegram_chat_id ?? '',
+    })
+  }
+
+  const cancelForm = () => { setShowForm(false); setEditingTeam(null); setForm({ ...emptyForm }) }
 
   const toggleTelegram = async (team: Team) => {
     await supabase.from('teams').update({ telegram_bot_active: !team.telegram_bot_active }).eq('id', team.id)
     queryClient.invalidateQueries({ queryKey: ['teams'] })
   }
+
+  const isEdit = !!editingTeam
+  const showAnyForm = showForm || isEdit
 
   return (
     <div>
@@ -77,30 +110,21 @@ export default function TeamsPage() {
         title="Equipos"
         showLogout
         rightElement={
-          <Button size="sm" onClick={() => setShowForm(true)}>
-            <Plus size={16} className="mr-1" />
-            Nuevo
+          <Button size="sm" onClick={() => { setShowForm(true); setEditingTeam(null); setForm({ ...emptyForm }) }}>
+            <Plus size={16} className="mr-1" /> Nuevo
           </Button>
         }
       />
-
       <div className="p-4 space-y-4">
-        {showForm && (
+        {showAnyForm && (
           <Card className="border-blue-200">
-            <p className="font-semibold text-gray-900 mb-3">Nuevo Equipo</p>
+            <p className="font-semibold text-gray-900 mb-3">{isEdit ? `Editar: ${editingTeam?.name}` : 'Nuevo Equipo'}</p>
             <div className="space-y-3">
               <Input label="Nombre del equipo *" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} error={errors.name} placeholder="Equipo Bogotá" />
-
               <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.telegram_bot_active}
-                  onChange={e => setForm(p => ({ ...p, telegram_bot_active: e.target.checked }))}
-                  className="w-4 h-4 rounded"
-                />
+                <input type="checkbox" checked={form.telegram_bot_active} onChange={e => setForm(p => ({ ...p, telegram_bot_active: e.target.checked }))} className="w-4 h-4 rounded" />
                 <span className="text-sm text-gray-700">Activar bot de Telegram</span>
               </label>
-
               {form.telegram_bot_active && (
                 <>
                   <Input label="Token del bot" value={form.telegram_bot_token} onChange={e => setForm(p => ({ ...p, telegram_bot_token: e.target.value }))} placeholder="1234567890:ABCdef..." />
@@ -108,13 +132,14 @@ export default function TeamsPage() {
                   <Input label="Chat ID" value={form.telegram_chat_id} onChange={e => setForm(p => ({ ...p, telegram_chat_id: e.target.value }))} placeholder="-1001234567890" />
                 </>
               )}
-
-              {createMutation.error && (
-                <p className="text-red-600 text-sm">Error al crear equipo. Intenta de nuevo.</p>
+              {(createMutation.error || editMutation.error) && (
+                <p className="text-red-600 text-sm">Error al guardar. Intenta de nuevo.</p>
               )}
               <div className="flex gap-2">
-                <Button variant="secondary" fullWidth onClick={() => setShowForm(false)}>Cancelar</Button>
-                <Button fullWidth isLoading={createMutation.isPending} onClick={() => createMutation.mutate()}>Crear</Button>
+                <Button variant="secondary" fullWidth onClick={cancelForm}>Cancelar</Button>
+                <Button fullWidth isLoading={isEdit ? editMutation.isPending : createMutation.isPending} onClick={() => isEdit ? editMutation.mutate() : createMutation.mutate()}>
+                  {isEdit ? 'Guardar cambios' : 'Crear'}
+                </Button>
               </div>
             </div>
           </Card>
@@ -139,16 +164,23 @@ export default function TeamsPage() {
                   <p className="text-xs text-blue-600 mt-0.5">🤖 {team.telegram_bot_name}</p>
                 )}
               </div>
-              <button
-                onClick={() => toggleTelegram(team)}
-                className={`flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                  team.telegram_bot_active
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-gray-100 text-gray-500'
-                }`}
-              >
-                {team.telegram_bot_active ? '🟢 Telegram ON' : '⚫ Telegram OFF'}
-              </button>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => startEdit(team)}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                  title="Editar equipo"
+                >
+                  <Pencil size={15} />
+                </button>
+                <button
+                  onClick={() => toggleTelegram(team)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                    team.telegram_bot_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  {team.telegram_bot_active ? '🟢 Telegram ON' : '⚫ Telegram OFF'}
+                </button>
+              </div>
             </div>
           </Card>
         ))}

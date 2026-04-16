@@ -60,9 +60,9 @@ export default function CollectionProgress({ teamId, userId, isAdmin, dateFrom, 
           style={{ width: `${data.pct}%` }}
         />
       </div>
-      <div className="flex justify-between text-xs text-gray-500">
-        <span>Recaudado: {formatCurrency(data.totalCollected)}</span>
-        <span>Esperado: {formatCurrency(data.totalExpected)}</span>
+      <div className="flex justify-between text-xs text-gray-500 flex-wrap gap-1">
+        <span>Recaudado: <span className="font-semibold text-gray-700">{formatCurrency(data.totalCollected)}</span></span>
+        <span>Esperado: <span className="font-semibold text-gray-700">{formatCurrency(data.totalExpected)}</span></span>
       </div>
     </Card>
   )

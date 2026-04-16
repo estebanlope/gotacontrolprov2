@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useClient } from './useClients'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { MapContainer, TileLayer, Marker } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -11,7 +12,9 @@ import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { loanStatusLabel, loanStatusColors } from '@/lib/loanCalculations'
+import { useAuth } from '@/context/AuthContext'
 import type { Loan } from '@/types'
+import { Pencil, Trash2 } from 'lucide-react'
 
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -23,7 +26,11 @@ L.Icon.Default.mergeOptions({
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
   const { data: client, isLoading } = useClient(id!)
+  const isAdmin = user?.role === 'admin'
+  const [photoOpen, setPhotoOpen] = useState(false)
 
   const { data: loans = [] } = useQuery<Loan[]>({
     queryKey: ['client-loans', id],
@@ -39,7 +46,39 @@ export default function ClientDetailPage() {
     enabled: !!id,
   })
 
+  const { data: createdByUser } = useQuery<{ username: string } | null>({
+    queryKey: ['user', client?.created_by],
+    queryFn: async () => {
+      if (!client?.created_by) return null
+      const { data } = await supabase.from('users').select('username').eq('id', client.created_by).single()
+      return data
+    },
+    enabled: isAdmin && !!client?.created_by,
+  })
+
   const activeLoan = loans.find(l => l.status === 'active' || l.status === 'overdue' || l.status === 'pending')
+  const hasActiveLoans = !!activeLoan
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('clients').delete().eq('id', id!)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] })
+      navigate('/clientes', { replace: true })
+    }
+  })
+
+  const handleDelete = () => {
+    if (hasActiveLoans) {
+      alert('No se puede eliminar un cliente con préstamos activos.')
+      return
+    }
+    if (confirm(`¿Eliminar a ${client?.full_name}? Esta acción no se puede deshacer.`)) {
+      deleteMutation.mutate()
+    }
+  }
 
   if (isLoading) {
     return (
@@ -61,15 +100,52 @@ export default function ClientDetailPage() {
 
   return (
     <div>
-      <PageHeader title="Detalle Cliente" showBack />
+      <PageHeader
+        title="Detalle Cliente"
+        showBack
+        rightElement={
+          isAdmin ? (
+            <div className="flex items-center gap-1">
+              <button onClick={() => navigate(`/clientes/${client.id}/editar`)} className="p-1.5 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+                <Pencil size={18} />
+              </button>
+              <button onClick={handleDelete} className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors" disabled={deleteMutation.isPending}>
+                <Trash2 size={18} />
+              </button>
+            </div>
+          ) : undefined
+        }
+      />
 
       <div className="p-4 space-y-4">
+        {/* Photo lightbox */}
+        {photoOpen && client.photo_url && (
+          <div
+            className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+            onClick={() => setPhotoOpen(false)}
+          >
+            <img
+              src={client.photo_url}
+              alt={client.full_name}
+              className="max-w-full max-h-full rounded-2xl object-contain shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setPhotoOpen(false)}
+              className="absolute top-4 right-4 text-white bg-black/50 rounded-full w-9 h-9 flex items-center justify-center text-lg hover:bg-black/70"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Profile Card */}
         <Card>
           <div className="flex items-center gap-4">
             {client.photo_url ? (
               <img src={client.photo_url} alt={client.full_name}
-                className="w-20 h-20 rounded-full object-cover flex-shrink-0 border-2 border-gray-100" />
+                onClick={() => setPhotoOpen(true)}
+                className="w-20 h-20 rounded-full object-cover flex-shrink-0 border-2 border-gray-100 cursor-zoom-in hover:opacity-90 transition-opacity" />
             ) : (
               <div className="w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                 <span className="text-blue-600 font-bold text-3xl">
@@ -94,6 +170,11 @@ export default function ClientDetailPage() {
               </p>
             )}
             <p className="text-xs text-gray-400">Registrado el {formatDate(client.created_at)}</p>
+            {isAdmin && createdByUser && (
+              <p className="text-xs text-gray-400">
+                Creado por: <span className="font-medium text-gray-800">{createdByUser.username}</span>
+              </p>
+            )}
           </div>
         </Card>
 

@@ -21,10 +21,12 @@ import LoanEditPage from '@/features/loans/LoanEditPage'
 // Payments
 import PaymentsListPage from '@/features/payments/PaymentsListPage'
 import PaymentForm from '@/features/payments/PaymentForm'
+import PaymentEditPage from '@/features/payments/PaymentEditPage'
 
 // Expenses
 import ExpensesListPage from '@/features/expenses/ExpensesListPage'
 import ExpenseForm from '@/features/expenses/ExpenseForm'
+import ExpenseEditPage from '@/features/expenses/ExpenseEditPage'
 
 // Resumen
 import ResumenPage from '@/features/resumen/ResumenPage'
@@ -91,8 +93,17 @@ export default function App() {
             >
               <Route path="inicio" element={<ResumenPage />} />
 
-              <Route path="clientes" element={<ClientsListPage />} />              <Route path="clientes/nuevo" element={<ClientForm />} />
+              <Route path="clientes" element={<ClientsListPage />} />
+              <Route path="clientes/nuevo" element={<ClientForm />} />
               <Route path="clientes/:id" element={<ClientDetailPage />} />
+              <Route
+                path="clientes/:id/editar"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <ClientForm />
+                  </ProtectedRoute>
+                }
+              />
 
               <Route path="prestamos" element={<LoansListPage />} />
               <Route path="prestamos/nuevo" element={<LoanForm />} />
@@ -108,10 +119,25 @@ export default function App() {
 
               <Route path="pagos" element={<PaymentsListPage />} />
               <Route path="pagos/nuevo" element={<PaymentForm />} />
+              <Route
+                path="pagos/:id/editar"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <PaymentEditPage />
+                  </ProtectedRoute>
+                }
+              />
 
-              <Route path="gastos" element={<ExpensesListPage />} />
-              <Route path="gastos/nuevo" element={<ExpenseForm />} />
-
+               <Route path="gastos" element={<ExpensesListPage />} />
+               <Route path="gastos/nuevo" element={<ExpenseForm />} />
+               <Route
+                 path="gastos/:id/editar"
+                 element={
+                   <ProtectedRoute allowedRoles={['admin']}>
+                     <ExpenseEditPage />
+                   </ProtectedRoute>
+                 }
+               />
 
               <Route
                 path="usuarios"
@@ -131,4 +157,3 @@ export default function App() {
     </QueryClientProvider>
   )
 }
-

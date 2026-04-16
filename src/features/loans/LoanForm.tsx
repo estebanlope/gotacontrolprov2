@@ -15,7 +15,7 @@ import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
-import { formatDate, formatCurrency } from '@/lib/utils'
+import { formatDate, formatCurrency, todayISO } from '@/lib/utils'
 import type { Loan, PaymentType, Client, Config } from '@/types'
 
 const PAYMENT_TYPE_OPTIONS = [
@@ -60,7 +60,7 @@ export default function LoanForm() {
     interest_rate: '',
     payment_type: 'weekly' as PaymentType,
     term_weeks: '4',
-    disbursement_date: new Date().toISOString().split('T')[0],
+    disbursement_date: todayISO(),
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -70,6 +70,14 @@ export default function LoanForm() {
       setForm(prev => ({ ...prev, interest_rate: String(config.default_interest_rate) }))
     }
   }, [config])
+
+  // Pre-fill client search when coming from client detail page
+  useEffect(() => {
+    if (preselectedClientId && clients.length > 0 && !clientSearch) {
+      const found = clients.find(c => c.id === preselectedClientId)
+      if (found) setClientSearch(`${found.full_name} — CC ${found.cedula}`)
+    }
+  }, [clients, preselectedClientId])
 
   // Derived calculations for preview
   const capital = parseFloat(form.capital) || 0
@@ -155,11 +163,19 @@ export default function LoanForm() {
         if (loanErr) throw loanErr
         const { error: schedErr } = await supabase.from('loan_schedule').upsert(scheduleWithIds)
         if (schedErr) throw schedErr
+
+        // Update user balance: reduce by capital
+        const { error: balanceErr } = await supabase
+          .from('users')
+          .update({ balance: user!.balance! - capital })
+          .eq('id', user!.id)
+        if (balanceErr) throw balanceErr
+
         await db.loans.update(id, { synced: true })
         await db.loan_schedule.where('loan_id').equals(id).modify({ synced: true })
 
         // Notify Telegram
-        const workerUrl = import.meta.env.VITE_CF_WORKER_URL
+        const workerUrl = (import.meta.env.VITE_CF_WORKER_URL as string)?.replace(/\/$/, '')
         if (workerUrl) {
           const client = clients.find(c => c.id === form.client_id)
           fetch(`${workerUrl}/notify/loan`, {
@@ -179,26 +195,78 @@ export default function LoanForm() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loans'] })
+      queryClient.invalidateQueries({ queryKey: ['loans-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['collection-breakdown'] })
       queryClient.invalidateQueries({ queryKey: ['clients'] })
+      queryClient.invalidateQueries({ queryKey: ['team-users'] })
       navigate(-1)
     }
   })
 
-  const clientOptions = clients.map(c => ({ value: c.id, label: `${c.full_name} — CC ${c.cedula}` }))
+  const [clientSearch, setClientSearch] = useState('')
+  const [showDropdown, setShowDropdown] = useState(false)
+
+  const selectedClient = clients.find(c => c.id === form.client_id)
+
+  const filteredClients = clientSearch.trim()
+    ? clients.filter(c =>
+        c.full_name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+        c.cedula.includes(clientSearch)
+      )
+    : clients
+
+  const handleSelectClient = (id: string, label: string) => {
+    set('client_id', id)
+    setClientSearch(label)
+    setShowDropdown(false)
+  }
 
   return (
     <div>
       <PageHeader title="Nuevo Préstamo" showBack />
 
       <form className="p-4 space-y-4" onSubmit={e => { e.preventDefault(); mutation.mutate() }}>
-        <Select
-          label="Cliente *"
-          options={clientOptions}
-          placeholder="Selecciona un cliente"
-          value={form.client_id}
-          onChange={e => set('client_id', e.target.value)}
-          error={errors.client_id}
-        />
+
+        {/* Client search */}
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-gray-700">Cliente *</label>
+          <div className="relative">
+            <input
+              type="text"
+              value={selectedClient && !showDropdown ? `${selectedClient.full_name} — CC ${selectedClient.cedula}` : clientSearch}
+              onChange={e => {
+                setClientSearch(e.target.value)
+                setShowDropdown(true)
+                if (!e.target.value) set('client_id', '')
+              }}
+              onFocus={() => setShowDropdown(true)}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+              placeholder="Buscar por nombre o cédula..."
+              className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {showDropdown && filteredClients.length > 0 && (
+              <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                {filteredClients.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={() => handleSelectClient(c.id, '')}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0"
+                  >
+                    <p className="font-medium text-gray-900">{c.full_name}</p>
+                    <p className="text-xs text-gray-400">CC {c.cedula}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+            {showDropdown && clientSearch && filteredClients.length === 0 && (
+              <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 text-sm text-gray-400">
+                Sin resultados
+              </div>
+            )}
+          </div>
+          {errors.client_id && <p className="text-xs text-red-600">{errors.client_id}</p>}
+        </div>
 
         <Input
           label="Capital prestado *"
@@ -212,7 +280,7 @@ export default function LoanForm() {
         />
 
         <Input
-          label="Tasa de interés (%) *"
+          label={`Tasa de interés (%) *${user?.role === 'cobrador' ? ' — Fija 20%' : ''}`}
           type="number"
           inputMode="decimal"
           value={form.interest_rate}
@@ -220,6 +288,7 @@ export default function LoanForm() {
           error={errors.interest_rate}
           placeholder="20"
           hint="Por defecto 20% sobre el capital inicial"
+          disabled={user?.role === 'cobrador'}
         />
 
         <Select
@@ -278,4 +347,3 @@ export default function LoanForm() {
     </div>
   )
 }
-

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -6,7 +6,7 @@ import PageHeader from '@/components/layout/PageHeader'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { formatDate, formatCurrency } from '@/lib/utils'
-import { Plus, TrendingDown } from 'lucide-react'
+import { Plus, TrendingDown, Edit2, Trash2 } from 'lucide-react'
 import type { Expense } from '@/types'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -19,6 +19,7 @@ const TYPE_LABELS: Record<string, string> = {
 export default function ExpensesListPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const { data: expenses = [], isLoading } = useQuery<(Expense & { users: { username: string } })[]>({
     queryKey: ['expenses', user?.team_id, user?.id, user?.role],
@@ -37,6 +38,21 @@ export default function ExpensesListPage() {
     },
     enabled: !!user?.team_id,
     staleTime: 1000 * 60,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (expenseId: string) => {
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', expenseId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+      queryClient.invalidateQueries({ queryKey: ['collection-breakdown'] })
+      queryClient.invalidateQueries({ queryKey: ['team-users'] })
+    }
   })
 
   const total = expenses.reduce((sum, e) => sum + e.amount, 0)
@@ -87,9 +103,34 @@ export default function ExpensesListPage() {
                   {formatDate(e.created_at)} · {e.users?.username ?? ''}
                 </p>
               </div>
-              <p className="text-lg font-bold text-red-600 ml-3 flex-shrink-0">
-                -{formatCurrency(e.amount)}
-              </p>
+              <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                <p className="text-lg font-bold text-red-600">
+                  -{formatCurrency(e.amount)}
+                </p>
+                {user?.role === 'admin' && (
+                  <>
+                    <button
+                      onClick={() => navigate(`/gastos/${e.id}/editar`)}
+                      className="p-2 hover:bg-blue-100 rounded-lg transition"
+                      title="Editar"
+                    >
+                      <Edit2 size={16} className="text-blue-600" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm('¿Eliminar este gasto?')) {
+                          deleteMutation.mutate(e.id)
+                        }
+                      }}
+                      disabled={deleteMutation.isPending}
+                      className="p-2 hover:bg-red-100 rounded-lg transition disabled:opacity-50"
+                      title="Eliminar"
+                    >
+                      <Trash2 size={16} className="text-red-600" />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </Card>
         ))}

@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useLoan, useLoanSchedule } from './useLoans'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import PageHeader from '@/components/layout/PageHeader'
 import Card, { CardTitle } from '@/components/ui/Card'
@@ -9,14 +9,16 @@ import { formatDate, formatCurrency } from '@/lib/utils'
 import { loanStatusLabel, loanStatusColors, paymentTypeLabel } from '@/lib/loanCalculations'
 import { useAuth } from '@/context/AuthContext'
 import type { Client, Payment } from '@/types'
-import { CheckCircle, Circle } from 'lucide-react'
+import { CheckCircle, Circle, Trash2, Pencil } from 'lucide-react'
 
 export default function LoanDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const queryClient = useQueryClient()
   const { data: loan, isLoading } = useLoan(id!)
   const { data: schedule = [] } = useLoanSchedule(id!)
+  const isAdmin = user?.role === 'admin'
 
   const { data: client } = useQuery<Client | null>({
     queryKey: ['client', loan?.client_id],
@@ -36,6 +38,43 @@ export default function LoanDetailPage() {
     },
     enabled: !!id,
   })
+
+  const deleteLoanMutation = useMutation({
+    mutationFn: async () => {
+      await supabase.from('loan_schedule').delete().eq('loan_id', id!)
+      await supabase.from('payments').delete().eq('loan_id', id!)
+      const { error } = await supabase.from('loans').delete().eq('id', id!)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['loans'] })
+      navigate('/prestamos', { replace: true })
+    }
+  })
+
+  const deletePaymentMutation = useMutation({
+    mutationFn: async (paymentId: string) => {
+      const { error } = await supabase.from('payments').delete().eq('id', paymentId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['loan-payments', id] })
+      queryClient.invalidateQueries({ queryKey: ['loans'] })
+      queryClient.invalidateQueries({ queryKey: ['payments'] })
+    }
+  })
+
+  const handleDeleteLoan = () => {
+    if (confirm('¿Eliminar este préstamo? Se eliminarán también sus pagos y cuotas. Esta acción no se puede deshacer.')) {
+      deleteLoanMutation.mutate()
+    }
+  }
+
+  const handleDeletePayment = (paymentId: string, amount: number) => {
+    if (confirm(`¿Eliminar el pago de ${formatCurrency(amount)}? Esta acción no se puede deshacer.`)) {
+      deletePaymentMutation.mutate(paymentId)
+    }
+  }
 
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0)
   const totalExpected = loan ? loan.capital + loan.capital * (loan.interest_rate / 100) : 0
@@ -117,11 +156,22 @@ export default function LoanDetailPage() {
           </Button>
         )}
 
-        {/* Edit button (admin only) */}
-        {user?.role === 'admin' && (
-          <Button variant="secondary" fullWidth onClick={() => navigate(`/prestamos/${loan.id}/editar`)}>
-            ✏️ Editar Préstamo
-          </Button>
+        {/* Admin actions */}
+        {isAdmin && (
+          <div className="flex gap-2">
+            <Button variant="secondary" fullWidth onClick={() => navigate(`/prestamos/${loan.id}/editar`)}>
+              ✏️ Editar Préstamo
+            </Button>
+            <Button
+              variant="secondary"
+              fullWidth
+              onClick={handleDeleteLoan}
+              isLoading={deleteLoanMutation.isPending}
+              className="text-red-600 border-red-200 hover:bg-red-50"
+            >
+              🗑️ Eliminar
+            </Button>
+          </div>
         )}
 
         {/* Schedule */}
@@ -166,6 +216,22 @@ export default function LoanDetailPage() {
                       {formatDate(p.payment_date)} · {p.method === 'cash' ? '💵 Efectivo' : '🔄 Transferencia'}
                     </p>
                   </div>
+                  {isAdmin && (
+                    <div className="flex items-center gap-1 ml-2">
+                      <button
+                        onClick={() => navigate(`/pagos/${p.id}/editar`)}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDeletePayment(p.id, p.amount)}
+                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -175,4 +241,3 @@ export default function LoanDetailPage() {
     </div>
   )
 }
-

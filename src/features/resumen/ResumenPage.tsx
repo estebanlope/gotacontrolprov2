@@ -104,7 +104,7 @@ export default function ResumenPage() {
         {/* Shared widgets — responsive grid on desktop */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <CollectionProgress teamId={teamId} userId={userId} isAdmin={isAdmin} dateFrom={dateFrom} dateTo={dateTo} />
-          <CollectionBreakdown teamId={teamId} userId={userId} isAdmin={isAdmin} dateFrom={dateFrom} dateTo={dateTo} />
+          <CollectionBreakdown teamId={teamId} userId={userId} isAdmin={isAdmin} dateFrom={dateFrom} dateTo={dateTo} preset={preset} />
           <LoansSummary teamId={teamId} userId={userId} isAdmin={isAdmin} dateFrom={dateFrom} dateTo={dateTo} />
           <ClientsSummary teamId={teamId} isAdmin={isAdmin} />
         </div>

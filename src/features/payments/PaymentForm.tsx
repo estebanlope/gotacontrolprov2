@@ -12,7 +12,7 @@ import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
-import { formatDate, formatCurrency } from '@/lib/utils'
+import { formatDate, formatCurrency, todayISO } from '@/lib/utils'
 import type { Loan, Payment, PaymentMethod, LoanScheduleEntry } from '@/types'
 
 const METHOD_OPTIONS = [
@@ -31,7 +31,7 @@ export default function PaymentForm() {
     loan_id: preselectedLoanId,
     amount: '',
     method: 'transfer' as PaymentMethod,
-    payment_date: new Date().toISOString().split('T')[0],
+    payment_date: todayISO(),
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -91,6 +91,27 @@ export default function PaymentForm() {
         const { error } = await supabase.from('payments').upsert(newPayment)
         if (error) throw error
 
+        // Update user balance: add payment amount
+        const { error: balanceErr } = await supabase.rpc('add_to_user_balance', {
+          p_user_id: user!.id,
+          p_amount: amount
+        })
+        if (balanceErr) {
+          // If RPC doesn't exist, do it manually
+          const { data: currentUser } = await supabase
+            .from('users')
+            .select('balance')
+            .eq('id', user!.id)
+            .single()
+
+          if (currentUser) {
+            await supabase
+              .from('users')
+              .update({ balance: (currentUser.balance ?? 0) + amount })
+              .eq('id', user!.id)
+          }
+        }
+
         // Fetch all payments to determine which schedule entries to mark paid
         const { data: allPayments } = await supabase
           .from('payments')
@@ -142,7 +163,7 @@ export default function PaymentForm() {
         await db.payments.update(id, { synced: true })
 
         // Notify Telegram
-        const workerUrl = import.meta.env.VITE_CF_WORKER_URL
+        const workerUrl = (import.meta.env.VITE_CF_WORKER_URL as string)?.replace(/\/$/, '')
         if (workerUrl && selectedLoan) {
           fetch(`${workerUrl}/notify/payment`, {
             method: 'POST',
@@ -165,6 +186,8 @@ export default function PaymentForm() {
       queryClient.invalidateQueries({ queryKey: ['loans'] })
       queryClient.invalidateQueries({ queryKey: ['loan-payments'] })
       queryClient.invalidateQueries({ queryKey: ['loan-schedule'] })
+      queryClient.invalidateQueries({ queryKey: ['collection-breakdown'] })
+      queryClient.invalidateQueries({ queryKey: ['team-users'] })
       navigate(-1)
     }
   })
@@ -236,4 +259,3 @@ export default function PaymentForm() {
     </div>
   )
 }
-

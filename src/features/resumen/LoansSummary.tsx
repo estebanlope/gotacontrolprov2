@@ -20,8 +20,8 @@ export default function LoansSummary({ teamId, userId, isAdmin, dateFrom, dateTo
         .from('loans')
         .select('capital, client_id')
         .eq('team_id', teamId)
-        .gte('created_at', dateFrom)
-        .lte('created_at', dateTo + 'T23:59:59')
+        .gte('disbursement_date', dateFrom)
+        .lte('disbursement_date', dateTo)
 
       if (!isAdmin) q = q.eq('created_by', userId)
 
@@ -34,7 +34,7 @@ export default function LoansSummary({ teamId, userId, isAdmin, dateFrom, dateTo
       return { count, totalCapital, uniqueClients }
     },
     enabled: !!teamId,
-    staleTime: 1000 * 60,
+    staleTime: 0,
   })
 
   if (!data) return null
@@ -42,12 +42,13 @@ export default function LoansSummary({ teamId, userId, isAdmin, dateFrom, dateTo
   return (
     <Card>
       <CardTitle className="mb-3">🏦 Préstamos del Período</CardTitle>
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Nuevos" value={data.count} icon="📝" colorClass="text-blue-600" />
-        <StatCard label="Clientes" value={data.uniqueClients} icon="👥" colorClass="text-purple-600" />
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard label="Nuevos" value={data.count} icon="📝" colorClass="text-blue-600" />
+          <StatCard label="Clientes" value={data.uniqueClients} icon="👥" colorClass="text-purple-600" />
+        </div>
         <StatCard label="Capital" value={formatCurrency(data.totalCapital)} icon="💰" colorClass="text-green-600" />
       </div>
     </Card>
   )
 }
-

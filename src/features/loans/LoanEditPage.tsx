@@ -7,6 +7,8 @@ import PageHeader from '@/components/layout/PageHeader'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
+import { generateSchedule, calcDueDate, calcNextPaymentDate, calcLoanStatus } from '@/lib/loanCalculations'
+import { v4 as uuidv4 } from 'uuid'
 import type { PaymentType } from '@/types'
 
 const PAYMENT_TYPE_OPTIONS = [
@@ -44,21 +46,65 @@ export default function LoanEditPage() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (!form) return
-      const { error } = await supabase
-        .from('loans')
-        .update({
-          capital: parseFloat(form.capital),
-          interest_rate: parseFloat(form.interest_rate),
-          payment_type: form.payment_type,
-          term_weeks: parseInt(form.term_weeks),
-          disbursement_date: form.disbursement_date,
-        })
-        .eq('id', id!)
+
+      const capital = parseFloat(form.capital)
+      const interestRate = parseFloat(form.interest_rate)
+      const termWeeks = parseInt(form.term_weeks)
+      const disbursementDate = new Date(form.disbursement_date + 'T12:00:00')
+      const paymentType = form.payment_type
+
+      // Recalculate due date
+      const dueDate = calcDueDate(disbursementDate, termWeeks)
+
+      // Regenerate schedule
+      const newSchedule = generateSchedule(id!, disbursementDate, capital, interestRate, paymentType, termWeeks)
+
+      // Delete old schedule
+      await supabase.from('loan_schedule').delete().eq('loan_id', id!)
+
+      // Insert new schedule with IDs
+      const scheduleRows = newSchedule.map(s => ({ id: uuidv4(), ...s }))
+      await supabase.from('loan_schedule').insert(scheduleRows)
+
+      // Get existing payments to recalculate paid entries
+      const { data: existingPayments } = await supabase.from('payments').select('*').eq('loan_id', id!)
+      const totalPaid = (existingPayments ?? []).reduce((s: number, p: { amount: number }) => s + p.amount, 0)
+
+      let accumulated = 0
+      const paidIds: string[] = []
+      for (const entry of scheduleRows) {
+        accumulated += entry.amount
+        if (accumulated <= totalPaid) paidIds.push(entry.id)
+      }
+      if (paidIds.length > 0) {
+        await supabase.from('loan_schedule').update({ status: 'paid' }).in('id', paidIds)
+      }
+
+      // Recalculate next payment date and status
+      const updatedSchedule = scheduleRows.map(s => ({
+        ...s,
+        status: paidIds.includes(s.id) ? 'paid' as const : 'pending' as const
+      }))
+      const nextPaymentDate = calcNextPaymentDate(updatedSchedule)
+      const newStatus = calcLoanStatus(updatedSchedule, existingPayments ?? [], nextPaymentDate)
+
+      // Update loan
+      const { error } = await supabase.from('loans').update({
+        capital,
+        interest_rate: interestRate,
+        payment_type: paymentType,
+        term_weeks: termWeeks,
+        disbursement_date: form.disbursement_date,
+        due_date: dueDate.toISOString().split('T')[0],
+        next_payment_date: nextPaymentDate,
+        status: newStatus,
+      }).eq('id', id!)
       if (error) throw error
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loan', id] })
       queryClient.invalidateQueries({ queryKey: ['loans'] })
+      queryClient.invalidateQueries({ queryKey: ['loan-schedule', id] })
       navigate(-1)
     }
   })
@@ -82,10 +128,8 @@ export default function LoanEditPage() {
         {mutation.error && (
           <p className="text-red-600 text-sm text-center">Error al guardar. Intenta de nuevo.</p>
         )}
-
         <Button type="submit" fullWidth isLoading={mutation.isPending}>Guardar Cambios</Button>
       </form>
     </div>
   )
 }
-

@@ -4,13 +4,14 @@ import { useLoans } from './useLoans'
 import PageHeader from '@/components/layout/PageHeader'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import { formatDate, formatCurrency } from '@/lib/utils'
+import { formatDate, formatCurrency, todayISO } from '@/lib/utils'
 import { loanStatusLabel, loanStatusColors, paymentTypeLabel } from '@/lib/loanCalculations'
 import type { LoanStatus } from '@/types'
 import { Plus, DollarSign } from 'lucide-react'
 
-const STATUS_FILTERS: { value: LoanStatus | 'all'; label: string }[] = [
+const STATUS_FILTERS: { value: LoanStatus | 'all' | 'today'; label: string }[] = [
   { value: 'all', label: 'Todos' },
+  { value: 'today', label: '📅 Hoy' },
   { value: 'active', label: 'Activos' },
   { value: 'overdue', label: 'En mora' },
   { value: 'pending', label: 'Sin iniciar' },
@@ -20,9 +21,14 @@ const STATUS_FILTERS: { value: LoanStatus | 'all'; label: string }[] = [
 export default function LoansListPage() {
   const navigate = useNavigate()
   const { data: loans = [], isLoading } = useLoans()
-  const [statusFilter, setStatusFilter] = useState<LoanStatus | 'all'>('all')
+  const [statusFilter, setStatusFilter] = useState<LoanStatus | 'all' | 'today'>('today')
 
-  const filtered = loans.filter(l => statusFilter === 'all' || l.status === statusFilter)
+  const today = todayISO()
+  const filtered = loans.filter(l => {
+    if (statusFilter === 'all') return true
+    if (statusFilter === 'today') return l.next_payment_date === today
+    return l.status === statusFilter
+  })
 
   return (
     <div>
@@ -106,4 +112,3 @@ export default function LoansListPage() {
     </div>
   )
 }
-
