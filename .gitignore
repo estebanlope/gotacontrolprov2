@@ -33,3 +33,4 @@ Thumbs.db
 npm-debug.log*
 *.zip
 
+package-lock.json
