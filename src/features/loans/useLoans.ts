@@ -15,18 +15,19 @@ export function useLoans() {
       if (!navigator.onLine) {
         let local = await db.loans.where('team_id').equals(user!.team_id!).toArray()
         if (user?.role === 'cobrador') local = local.filter(l => l.created_by === user.id)
-        // Enrich with client names from local Dexie
         const clientIds = [...new Set(local.map(l => l.client_id))]
         const localClients = await db.clients.where('id').anyOf(clientIds).toArray()
         const clientMap = Object.fromEntries(localClients.map(c => [c.id, c.full_name]))
-        return local.map(l => ({ ...l, client_name: clientMap[l.client_id] }))
+        return local
+          .map(l => ({ ...l, client_name: clientMap[l.client_id] }))
+          .sort((a, b) => (a.client_name ?? '').localeCompare(b.client_name ?? '', 'es'))
       }
 
       let query = supabase
         .from('loans')
         .select('*, clients(full_name)')
         .eq('team_id', user!.team_id!)
-        .order('created_at', { ascending: false })
+        .order('clients(full_name)', { ascending: true })
 
       if (user?.role === 'cobrador') query = query.eq('created_by', user.id)
 
@@ -80,4 +81,3 @@ export function useLoanSchedule(loanId: string) {
     enabled: !!loanId,
   })
 }
-

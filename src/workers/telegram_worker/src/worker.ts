@@ -55,20 +55,20 @@ function formatLoanMessage(body: Record<string, unknown>): string {
   const schedule = (body.schedule as Record<string, unknown>[]) ?? []
 
   return [
-    `🏦 *NUEVO PRÉSTAMO*`,
-    ``,
-    `👤 *Cliente:* ${client?.full_name ?? '—'}`,
-    `🪪 *Cédula:* ${client?.cedula ?? '—'}`,
-    `📱 *Teléfono:* ${client?.phone ?? '—'}`,
-    ``,
-    `💰 *Capital:* $${Number(loan.capital).toLocaleString('es-CO')}`,
-    `📊 *Interés:* ${loan.interest_rate}%`,
-    `💵 *Total a pagar:* $${(Number(loan.capital) * (1 + Number(loan.interest_rate) / 100)).toLocaleString('es-CO')}`,
-    `📅 *Tipo de pago:* ${paymentTypeLabel(String(loan.payment_type))}`,
-    `⏳ *Plazo:* ${loan.term_weeks} semanas`,
-    `📆 *Desembolso:* ${loan.disbursement_date}`,
-    `🔚 *Vencimiento:* ${loan.due_date}`,
-    `📋 *Cuotas:* ${schedule.length} de $${schedule[0] ? Number((schedule[0] as Record<string, unknown>).amount).toLocaleString('es-CO') : '—'} c/u`,
+   `🏦 *NUEVO PRÉSTAMO*`,
+   `━━━━━━━━━━━━━━━━━━`, ``,
+   `👤 *Cliente:* ${client?.full_name ?? "—"}`,
+   `🪪 *Cédula:* ${client?.cedula ?? "—"}`,
+   `📱 *Teléfono:* ${client?.phone ?? "—"}`, ``,
+   `💰 *Capital:* $${Number(loan.capital).toLocaleString("es-CO")}`,
+   `📊 *Interés:* ${loan.interest_rate}%`,
+   `💵 *Total a pagar:* $${(Number(loan.capital) * (1 + Number(loan.interest_rate) / 100)).toLocaleString("es-CO")}`,
+   `📋 *Cuotas:* ${schedule.length} de $${schedule[0] ? Number(schedule[0].amount).toLocaleString("es-CO") : "—"} c/u`,
+   `📅 *Tipo de pago:* ${paymentTypeLabel(String(loan.payment_type))}`, ``,
+   `⏳ *Plazo:* ${loan.term_weeks} semanas`,
+   `📆 *Desembolso:* ${loan.disbursement_date}`,
+   `🔚 *Vencimiento:* ${loan.due_date}`,
+   `━━━━━━━━━━━━━━━━━━`
   ].join('\n')
 }
 
@@ -79,16 +79,14 @@ function formatPaymentMessage(body: Record<string, unknown>): string {
 
   return [
     `✅ *PAGO REGISTRADO*`,
-    ``,
-    `👤 *Cliente:* ${client?.full_name ?? '—'}`,
-    `📱 *Teléfono:* ${client?.phone ?? '—'}`,
-    ``,
-    `💰 *Monto pagado:* $${Number(payment.amount).toLocaleString('es-CO')}`,
-    `💳 *Método:* ${payment.method === 'cash' ? '💵 Efectivo' : '🔄 Transferencia'}`,
-    `📅 *Fecha:* ${payment.payment_date}`,
-    ``,
-    `📌 *Préstamo:* $${Number(loan?.capital ?? 0).toLocaleString('es-CO')} · ${paymentTypeLabel(String(loan?.payment_type ?? ''))}`,
-    loan?.next_payment_date ? `📆 *Próximo pago:* ${loan.next_payment_date}` : '',
+    `━━━━━━━━━━━━━━━━━━`, ``,
+    `👤 *Cliente:* ${client?.full_name ?? "—"}`,
+    `📱 *Teléfono:* ${client?.phone ?? "—"}`, ``,
+    `💰 *Monto pagado:* $${Number(payment.amount).toLocaleString("es-CO")}`,
+    `💳 *Método:* ${payment.method === "cash" ? "💵 Efectivo" : "🔄 Transferencia"}`,
+    `📅 *Fecha:* ${payment.payment_date}`, ``,
+    `📌 *Préstamo:* $${Number(loan?.capital ?? 0).toLocaleString("es-CO")} · ${paymentTypeLabel(String(loan?.payment_type ?? ""))}`,
+    loan?.next_payment_date ? `📆 *Próximo pago:* ${loan.next_payment_date}` : ""
   ].filter(Boolean).join('\n')
 }
 
@@ -104,20 +102,27 @@ function formatExpenseMessage(body: Record<string, unknown>): string {
 
   return [
     `📉 *GASTO REGISTRADO*`,
-    ``,
+    `━━━━━━━━━━━━━━━━━━`, ``,
     `🏷️ *Tipo:* ${typeLabels[String(expense.type)] ?? expense.type}`,
-    `💵 *Monto:* $${Number(expense.amount).toLocaleString('es-CO')}`,
-    expense.notes ? `📝 *Notas:* ${expense.notes}` : '',
-    `👤 *Registrado por:* ${body.username ?? '—'}`,
-    `📅 *Fecha:* ${String(expense.created_at).split('T')[0]}`,
+    `💵 *Monto:* $${Number(expense.amount).toLocaleString("es-CO")}`,
+    expense.notes ? `📝 *Notas:* ${expense.notes}` : "",
+    `👤 *Registrado por:* ${body.username ?? "—"}`,
+    `📅 *Fecha:* ${String(expense.created_at).split("T")[0]}`
   ].filter(Boolean).join('\n')
 }
 
 async function formatSummaryMessage(env: Env, teamId: string, dateFrom: string, dateTo: string, teamName: string): Promise<string> {
+    // Convert Colombia date range to UTC range for created_at filters
+  const utcStart = `${dateFrom}T05:00:00.000Z`
+  const utcEndDate = new Date(`${dateTo}T05:00:00.000Z`)
+  utcEndDate.setUTCDate(utcEndDate.getUTCDate() + 1)
+  utcEndDate.setUTCSeconds(utcEndDate.getUTCSeconds() - 1)
+  const utcEnd = utcEndDate.toISOString().replace(/\.\d{3}Z$/, '.999Z')
+
   const [paymentsRes, loansRes, expensesRes] = await Promise.all([
     supabaseFetch(env, `/payments?team_id=eq.${teamId}&payment_date=gte.${dateFrom}&payment_date=lte.${dateTo}&select=amount,method`),
-    supabaseFetch(env, `/loans?team_id=eq.${teamId}&created_at=gte.${dateFrom}&created_at=lte.${dateTo}T23:59:59&select=capital`),
-    supabaseFetch(env, `/expenses?team_id=eq.${teamId}&created_at=gte.${dateFrom}&created_at=lte.${dateTo}T23:59:59&select=amount`),
+    supabaseFetch(env, `/loans?team_id=eq.${teamId}&created_at=gte.${encodeURIComponent(utcStart)}&created_at=lte.${encodeURIComponent(utcEnd)}&select=capital`),
+    supabaseFetch(env, `/expenses?team_id=eq.${teamId}&created_at=gte.${encodeURIComponent(utcStart)}&created_at=lte.${encodeURIComponent(utcEnd)}&select=amount`),
   ])
 
   const payments: { amount: number; method: string }[] = await paymentsRes.json()
@@ -139,19 +144,16 @@ async function formatSummaryMessage(env: Env, teamId: string, dateFrom: string, 
     `📊 *RESUMEN DE CARTERA*`,
     `🏢 ${teamName}`,
     `📅 ${dateFrom} → ${dateTo}`,
-    ``,
+    `━━━━━━━━━━━━━━━━━━`, ``,
     `💚 *INGRESOS (${numPayments} recaudos)*`,
-    `   Total: $${totalIncome.toLocaleString('es-CO')}`,
-    `   💵 Efectivo: $${cashIncome.toLocaleString('es-CO')}`,
-    `   🔄 Transferencia: $${transferIncome.toLocaleString('es-CO')}`,
-    ``,
+    `   Total: $${totalIncome.toLocaleString("es-CO")}`,
+    `   💵 Efectivo: $${cashIncome.toLocaleString("es-CO")}`,
+    `   🔄 Transferencia: $${transferIncome.toLocaleString("es-CO")}`, ``,
     `🔴 *EGRESOS (${numLoans} préstamos)*`,
-    `   Capital prestado: $${totalLoaned.toLocaleString('es-CO')}`,
-    ``,
+    `   Capital prestado: $${totalLoaned.toLocaleString("es-CO")}`, ``,
     `📉 *GASTOS*`,
-    `   Total: $${totalExpenses.toLocaleString('es-CO')}`,
-    ``,
-    `${netBalance >= 0 ? '✅' : '⚠️'} *SALDO NETO: $${netBalance.toLocaleString('es-CO')}*`,
+    `   Total: $${totalExpenses.toLocaleString("es-CO")}`, ``,
+    `${netBalance >= 0 ? "✅" : "⚠️"} *SALDO NETO: $${netBalance.toLocaleString("es-CO")}*`
   ].join('\n')
 }
 

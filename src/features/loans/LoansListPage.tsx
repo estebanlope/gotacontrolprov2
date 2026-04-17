@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLoans } from './useLoans'
+import RouteModal, { getRouteOrder } from './RouteModal'
+import { useAuth } from '@/context/AuthContext'
 import PageHeader from '@/components/layout/PageHeader'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { formatDate, formatCurrency, todayISO } from '@/lib/utils'
 import { loanStatusLabel, loanStatusColors, paymentTypeLabel, calcNumInstallments } from '@/lib/loanCalculations'
 import type { LoanStatus } from '@/types'
-import { Plus, DollarSign } from 'lucide-react'
+import { Plus, DollarSign, MapPin } from 'lucide-react'
 
 const STATUS_FILTERS: { value: LoanStatus | 'all' | 'today'; label: string }[] = [
   { value: 'all', label: 'Todos' },
@@ -20,15 +22,28 @@ const STATUS_FILTERS: { value: LoanStatus | 'all' | 'today'; label: string }[] =
 
 export default function LoansListPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const { data: loans = [], isLoading } = useLoans()
   const [statusFilter, setStatusFilter] = useState<LoanStatus | 'all' | 'today'>('today')
+  const [showRoute, setShowRoute] = useState(false)
 
   const today = todayISO()
   const filtered = loans.filter(l => {
     if (statusFilter === 'all') return true
-    if (statusFilter === 'today') return l.next_payment_date === today
+    if (statusFilter === 'today') return !!l.next_payment_date && l.next_payment_date <= today
     return l.status === statusFilter
   })
+
+  // Apply route order when filter is 'today'
+  const sortedFiltered = statusFilter === 'today' && user?.id
+    ? (() => {
+        const order = getRouteOrder(user.id)
+        if (order.length === 0) return filtered
+        const ordered = order.map(id => filtered.find(l => l.id === id)).filter(Boolean) as typeof filtered
+        const rest = filtered.filter(l => !order.includes(l.id))
+        return [...ordered, ...rest]
+      })()
+    : filtered
 
   return (
     <div>
@@ -36,12 +51,26 @@ export default function LoansListPage() {
         title="Préstamos"
         showLogout
         rightElement={
-          <Button size="sm" onClick={() => navigate('/prestamos/nuevo')}>
-            <Plus size={16} className="mr-1" />
-            Nuevo
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setShowRoute(true)}>
+              <MapPin size={15} className="mr-1" />
+              Ruta
+            </Button>
+            <Button size="sm" onClick={() => navigate('/prestamos/nuevo')}>
+              <Plus size={16} className="mr-1" />
+              Nuevo
+            </Button>
+          </div>
         }
       />
+
+      {showRoute && user && (
+        <RouteModal
+          userId={user.id}
+          loans={loans}
+          onClose={() => setShowRoute(false)}
+        />
+      )}
 
       <div className="p-4 space-y-4">
         {/* Status filter pills */}
@@ -68,23 +97,33 @@ export default function LoansListPage() {
           </div>
         )}
 
-        {!isLoading && filtered.length === 0 && (
+        {!isLoading && sortedFiltered.length === 0 && (
           <div className="text-center py-12 text-gray-400">
             <DollarSign size={40} className="mx-auto mb-3 opacity-30" />
             <p className="font-medium">Sin préstamos {statusFilter !== 'all' ? 'en este estado' : ''}</p>
           </div>
         )}
 
-        {filtered.map(loan => {
+        {sortedFiltered.map((loan, index) => {
           const totalAmount = loan.capital * (1 + loan.interest_rate / 100)
           const numInstallments = calcNumInstallments(loan.payment_type, loan.term_weeks)
           const installment = numInstallments > 0 ? totalAmount / numInstallments : 0
 
+          const borderColor =
+            loan.status === 'paid'
+              ? 'border-l-4 border-l-green-500'
+              : loan.status === 'overdue' || (loan.next_payment_date && loan.next_payment_date < today)
+              ? 'border-l-4 border-l-orange-500'
+              : 'border-l-4 border-l-blue-500'
+
           return (
-          <Card key={loan.id} onClick={() => navigate(`/prestamos/${loan.id}`)}>
+          <Card key={loan.id} onClick={() => navigate(`/prestamos/${loan.id}`)} className={borderColor}>
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
+                  {statusFilter === 'today' && (
+                    <span className="text-xs font-bold text-gray-300">#{index + 1}</span>
+                  )}
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${loanStatusColors(loan.status)}`}>
                     {loanStatusLabel(loan.status)}
                   </span>
@@ -115,7 +154,7 @@ export default function LoansListPage() {
         })}
 
         <p className="text-center text-xs text-gray-400 py-2">
-          {filtered.length} préstamo{filtered.length !== 1 ? 's' : ''}
+          {sortedFiltered.length} préstamo{sortedFiltered.length !== 1 ? 's' : ''}
         </p>
       </div>
     </div>

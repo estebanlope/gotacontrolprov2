@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import Card, { CardTitle } from '@/components/ui/Card'
 import StatCard from '@/components/ui/StatCard'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, colombiaDateToUTCStart, colombiaDateToUTCEnd } from '@/lib/utils'
 import { usePendingBalanceSync } from '@/hooks/usePendingBalanceSync'
 
 interface Props {
@@ -73,8 +73,8 @@ export default function CollectionBreakdown({ teamId, userId, isAdmin, dateFrom,
         .from('expenses')
         .select('amount')
         .eq('team_id', teamId)
-        .gte('created_at', dateFrom)
-        .lte('created_at', dateTo + 'T23:59:59')
+        .gte('created_at', colombiaDateToUTCStart(dateFrom))
+        .lte('created_at', colombiaDateToUTCEnd(dateTo))
 
       if (!isAdmin) expQ = expQ.eq('created_by', userId)
       const { data: expenses } = await expQ

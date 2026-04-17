@@ -85,3 +85,25 @@ export function startOfMonthISO(): string {
   d.setUTCDate(1)
   return d.toISOString().split('T')[0]
 }
+
+/**
+ * Converts a Colombia date (YYYY-MM-DD) to the UTC ISO timestamp
+ * representing the START of that day in Colombia (UTC-5).
+ * Colombia 00:00 UTC-5 = 05:00 UTC same day.
+ */
+export function colombiaDateToUTCStart(dateISO: string): string {
+  return `${dateISO}T05:00:00.000Z`
+}
+
+/**
+ * Converts a Colombia date (YYYY-MM-DD) to the UTC ISO timestamp
+ * representing the END of that day in Colombia (UTC-5).
+ * Colombia 23:59:59 UTC-5 = 04:59:59 UTC the NEXT day.
+ */
+export function colombiaDateToUTCEnd(dateISO: string): string {
+  const d = new Date(`${dateISO}T05:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  d.setUTCSeconds(d.getUTCSeconds() - 1)
+  return d.toISOString().replace(/\.\d{3}Z$/, '.999Z')
+}
+

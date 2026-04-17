@@ -46,7 +46,7 @@ export default function LoanForm() {
   const { data: clients = [] } = useQuery<Pick<Client, 'id' | 'full_name' | 'cedula' | 'phone'>[]>({
     queryKey: ['clients-selector', user?.team_id, user?.role, user?.id],
     queryFn: async () => {
-      let q = supabase.from('clients').select('id, full_name, cedula, phone',).eq('team_id', user!.team_id!)
+      let q = supabase.from('clients').select('id, full_name, cedula, phone').eq('team_id', user!.team_id!)
       if (user?.role === 'cobrador') q = q.eq('created_by', user.id)
       const { data } = await q.order('full_name')
       return (data ?? []) as Pick<Client, 'id' | 'full_name' | 'cedula' | 'phone'>[]
