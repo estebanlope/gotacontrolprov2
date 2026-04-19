@@ -1,4 +1,4 @@
-name = "personalproject-telegram-worker"
+name = "bot-moneymovement-telegram-report"
 main = "src/worker.ts"
 compatibility_date = "2024-01-01"
 
