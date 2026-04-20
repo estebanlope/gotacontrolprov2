@@ -41,26 +41,34 @@ export default function LoanDetailPage() {
 
   const deleteLoanMutation = useMutation({
     mutationFn: async () => {
-      await supabase.from('loan_schedule').delete().eq('loan_id', id!)
-      await supabase.from('payments').delete().eq('loan_id', id!)
-      const { error } = await supabase.from('loans').delete().eq('id', id!)
-      if (error) throw error
+      const { data, error } = await supabase.rpc('delete_loan_with_balance_revert', {
+        p_loan_id: id
+      })
+      if (error) throw new Error(error.message)
+      if (data && !data.success) throw new Error(data.error)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loans'] })
+      queryClient.invalidateQueries({ queryKey: ['collection-breakdown'] })
+      queryClient.invalidateQueries({ queryKey: ['team-users'] })
       navigate('/prestamos', { replace: true })
     }
   })
 
   const deletePaymentMutation = useMutation({
     mutationFn: async (paymentId: string) => {
-      const { error } = await supabase.from('payments').delete().eq('id', paymentId)
-      if (error) throw error
+      const { data, error } = await supabase.rpc('delete_payment_with_balance_revert', {
+        p_payment_id: paymentId
+      })
+      if (error) throw new Error(error.message)
+      if (data && !data.success) throw new Error(data.error)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loan-payments', id] })
       queryClient.invalidateQueries({ queryKey: ['loans'] })
       queryClient.invalidateQueries({ queryKey: ['payments'] })
+      queryClient.invalidateQueries({ queryKey: ['collection-breakdown'] })
+      queryClient.invalidateQueries({ queryKey: ['team-users'] })
     }
   })
 

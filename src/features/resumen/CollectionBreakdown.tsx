@@ -63,6 +63,7 @@ export default function CollectionBreakdown({ teamId, userId, isAdmin, dateFrom,
         .from('loan_schedule')
         .select('amount, loans!inner(team_id, created_by)')
         .eq('loans.team_id', teamId)
+        .gte('due_date', dateFrom)
         .lte('due_date', dateTo)
 
       if (!isAdmin) eQ = eQ.eq('loans.created_by', userId)

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/context/AuthContext'
 import PageHeader from '@/components/layout/PageHeader'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
@@ -19,7 +18,6 @@ const EXPENSE_TYPE_OPTIONS = [
 export default function ExpenseEditPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { user } = useAuth()
   const queryClient = useQueryClient()
 
   const [form, setForm] = useState({
@@ -68,35 +66,25 @@ export default function ExpenseEditPage() {
     mutationFn: async () => {
       if (!validate() || !expense) throw new Error('Validation failed')
 
-      const oldAmount = expense.amount
       const newAmount = parseFloat(form.amount)
 
-      // Actualizar gasto
+      // Update expense metadata
       const { error } = await supabase
         .from('expenses')
         .update({
           type: form.type,
-          amount: newAmount,
           notes: form.notes.trim() || null,
         })
         .eq('id', id!)
       if (error) throw error
 
-      // Actualizar balance: revertir monto viejo y restar monto nuevo
-      const { data: currentUser } = await supabase
-        .from('users')
-        .select('balance')
-        .eq('id', user!.id)
-        .single()
-
-      if (currentUser) {
-        // balance = balance + oldAmount (revertir) - newAmount (aplicar nueva)
-        const newBalance = Math.max(0, (currentUser.balance ?? 0) + oldAmount - newAmount)
-        await supabase
-          .from('users')
-          .update({ balance: newBalance })
-          .eq('id', user!.id)
-      }
+      // Apply balance delta for amount change via RPC
+      const { data: balanceResult, error: balanceError } = await supabase.rpc('edit_expense_with_balance_delta', {
+        p_expense_id: id,
+        p_new_amount: newAmount
+      })
+      if (balanceError) throw new Error(balanceError.message)
+      if (balanceResult && !balanceResult.success) throw new Error(balanceResult.error)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] })

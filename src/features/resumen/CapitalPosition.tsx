@@ -13,8 +13,8 @@ export default function CapitalPosition({ teamId, dateFrom, dateTo }: Props) {
       const [configRes, loansRes, paymentsRes, expensesRes] = await Promise.all([
         supabase.from('config').select('capital_base').eq('team_id', teamId).single(),
         supabase.from('loans').select('capital, interest_rate, status').eq('team_id', teamId),
-        supabase.from('payments').select('amount').eq('team_id', teamId).gte('payment_date', dateFrom).lte('payment_date', dateTo),
-        supabase.from('expenses').select('amount').eq('team_id', teamId).gte('created_at', dateFrom).lte('created_at', dateTo + 'T23:59:59'),
+        supabase.from('payments').select('amount').eq('team_id', teamId),
+        supabase.from('expenses').select('amount').eq('team_id', teamId),
       ])
 
       const capitalBase = configRes.data?.capital_base ?? 0

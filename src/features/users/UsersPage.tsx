@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '@/lib/supabase'
@@ -59,6 +59,47 @@ export default function UsersPage() {
     },
     enabled: !!user?.team_id,
   })
+
+  // Active loans per cobrador (status != 'paid') — static, no date filters
+  const { data: activeLoans = [] } = useQuery<{ created_by: string; capital: number }[]>({
+    queryKey: ['team-active-loans-by-cobrador', user?.team_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('loans')
+        .select('created_by, capital')
+        .eq('team_id', user!.team_id!)
+        .neq('status', 'paid')
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!user?.team_id,
+    staleTime: 1000 * 60,
+  })
+
+  // Group loan stats by cobrador id
+  const loanStatsByUser = useMemo(() => {
+    const map: Record<string, { active_loans_count: number; capital_in_street: number }> = {}
+    for (const loan of activeLoans) {
+      if (!loan.created_by) continue
+      if (!map[loan.created_by]) map[loan.created_by] = { active_loans_count: 0, capital_in_street: 0 }
+      map[loan.created_by].active_loans_count += 1
+      map[loan.created_by].capital_in_street += loan.capital ?? 0
+    }
+    return map
+  }, [activeLoans])
+
+  // Global totals across all cobradores
+  const cobradorTotals = useMemo(() => {
+    const cobradores = users.filter(u => u.role === 'cobrador')
+    return cobradores.reduce(
+      (acc, u) => ({
+        balance: acc.balance + (u.balance ?? 0),
+        active_loans_count: acc.active_loans_count + (loanStatsByUser[u.id]?.active_loans_count ?? 0),
+        capital_in_street: acc.capital_in_street + (loanStatsByUser[u.id]?.capital_in_street ?? 0),
+      }),
+      { balance: 0, active_loans_count: 0, capital_in_street: 0 }
+    )
+  }, [users, loanStatsByUser])
 
   // Validate using assigned_capital sum (not balance)
   const totalAssigned = users.reduce((sum, u) => sum + (u.assigned_capital ?? 0), 0)
@@ -278,6 +319,27 @@ export default function UsersPage() {
           </Card>
         )}
 
+        {/* Cobrador portfolio totals — admin only, static (no date filters) */}
+        {user?.role === 'admin' && users.some(u => u.role === 'cobrador') && (
+          <Card>
+            <p className="text-sm font-semibold text-gray-700 mb-3">📊 Resumen de Cobradores</p>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <p className="text-xs text-gray-500">Saldo total</p>
+                <p className="text-sm font-bold text-green-700 mt-0.5">{formatCurrency(cobradorTotals.balance)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Préstamos activos</p>
+                <p className="text-sm font-bold text-blue-700 mt-0.5">{cobradorTotals.active_loans_count}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Capital en calle</p>
+                <p className="text-sm font-bold text-orange-600 mt-0.5">{formatCurrency(cobradorTotals.capital_in_street)}</p>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {isLoading && (
           <div className="text-center py-12 text-gray-400">Cargando usuarios...</div>
         )}
@@ -291,14 +353,28 @@ export default function UsersPage() {
 
         {users.map(u => (
           <Card key={u.id}>
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0">
                 <p className="font-semibold text-gray-900">{u.username}</p>
                 <p className="text-xs text-gray-400">{ROLE_LABELS[u.role]} · Creado {formatDate(u.created_at)}</p>
                 <p className="text-sm font-semibold text-blue-700 mt-1">Capital asignado: {formatCurrency(u.assigned_capital ?? 0)}</p>
                 <p className="text-sm text-green-700">Saldo disponible: {formatCurrency(u.balance ?? 0)}</p>
+
+                {/* Portfolio stats — only for cobradores */}
+                {u.role === 'cobrador' && (
+                  <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-gray-100">
+                    <div>
+                      <p className="text-xs text-gray-500">Préstamos activos</p>
+                      <p className="text-sm font-semibold text-gray-900">{loanStatsByUser[u.id]?.active_loans_count ?? 0}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Capital en calle</p>
+                      <p className="text-sm font-semibold text-orange-600">{formatCurrency(loanStatsByUser[u.id]?.capital_in_street ?? 0)}</p>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 ml-3 flex-shrink-0">
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                   u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
                 }`}>

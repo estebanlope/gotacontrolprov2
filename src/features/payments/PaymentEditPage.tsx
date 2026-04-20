@@ -65,13 +65,20 @@ export default function PaymentEditPage() {
 
       const amount = parseFloat(form.amount)
 
-      // Update payment
+      // Update payment metadata
       const { error } = await supabase.from('payments').update({
-        amount,
         method: form.method,
         payment_date: form.payment_date,
       }).eq('id', id!)
       if (error) throw error
+
+      // Apply balance delta for amount change via RPC
+      const { data: balanceResult, error: balanceError } = await supabase.rpc('edit_payment_with_balance_delta', {
+        p_payment_id: id,
+        p_new_amount: amount
+      })
+      if (balanceError) throw new Error(balanceError.message)
+      if (balanceResult && !balanceResult.success) throw new Error(balanceResult.error)
 
       // Recalculate schedule paid status
       const { data: allPayments } = await supabase.from('payments').select('amount').eq('loan_id', payment.loan_id)
@@ -110,6 +117,8 @@ export default function PaymentEditPage() {
       queryClient.invalidateQueries({ queryKey: ['loan-payments', payment?.loan_id] })
       queryClient.invalidateQueries({ queryKey: ['payments'] })
       queryClient.invalidateQueries({ queryKey: ['loans'] })
+      queryClient.invalidateQueries({ queryKey: ['collection-breakdown'] })
+      queryClient.invalidateQueries({ queryKey: ['team-users'] })
       navigate(-1)
     }
   })

@@ -89,6 +89,12 @@ export default function RouteModal({ userId, loans, onClose }: Props) {
 
   const [items, setItems] = useState<LoanWithClient[]>([])
 
+  // B: hide BottomNav while modal is open
+  useEffect(() => {
+    document.body.classList.add('route-modal-open')
+    return () => document.body.classList.remove('route-modal-open')
+  }, [])
+
   useEffect(() => {
     const savedOrder = getRouteOrder(userId)
     if (savedOrder.length > 0) {
@@ -134,7 +140,7 @@ export default function RouteModal({ userId, loans, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gray-50">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-gray-50">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 shadow-sm">
         <div>
@@ -163,7 +169,7 @@ export default function RouteModal({ userId, loans, onClose }: Props) {
       </div>
 
       {/* Footer */}
-      <div className="p-4 bg-white border-t border-gray-100 flex gap-3">
+      <div className="p-4 bg-white border-t border-gray-100 flex gap-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
         <button
           onClick={handleReset}
           className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50"

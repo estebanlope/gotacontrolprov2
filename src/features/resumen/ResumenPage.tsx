@@ -111,11 +111,13 @@ export default function ResumenPage() {
 
         {/* Admin only widgets */}
         {isAdmin && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <CapitalPosition teamId={teamId} dateFrom={dateFrom} dateTo={dateTo} />
-            <PortfolioStatus teamId={teamId} />
-            <WeeklyCashFlow teamId={teamId} />
-            <SendTelegramSummary teamId={teamId} dateFrom={dateFrom} dateTo={dateTo} />
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CapitalPosition teamId={teamId} dateFrom={dateFrom} dateTo={dateTo} />
+              <PortfolioStatus teamId={teamId} />
+              <WeeklyCashFlow teamId={teamId} />
+              <SendTelegramSummary teamId={teamId} dateFrom={dateFrom} dateTo={dateTo} />
+            </div>
           </div>
         )}
       </div>

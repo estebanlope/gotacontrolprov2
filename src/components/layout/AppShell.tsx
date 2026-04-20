@@ -23,7 +23,7 @@ export default function AppShell() {
       </div>
 
       {/* Bottom nav — only visible on mobile */}
-      <div className="md:hidden">
+      <div className="md:hidden bottom-nav-container">
         <BottomNav />
       </div>
     </div>

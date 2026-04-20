@@ -1,2 +1,8 @@
 @import "tailwindcss";
 
+/* B: ocultar barra de navegación cuando el modal de ruta está abierto */
+body.route-modal-open .bottom-nav-container {
+  display: none;
+}
+
+

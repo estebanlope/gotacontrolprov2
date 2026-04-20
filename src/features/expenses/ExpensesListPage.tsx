@@ -42,11 +42,11 @@ export default function ExpensesListPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (expenseId: string) => {
-      const { error } = await supabase
-        .from('expenses')
-        .delete()
-        .eq('id', expenseId)
-      if (error) throw error
+      const { data, error } = await supabase.rpc('delete_expense_with_balance_revert', {
+        p_expense_id: expenseId
+      })
+      if (error) throw new Error(error.message)
+      if (data && !data.success) throw new Error(data.error)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] })

@@ -88,9 +88,8 @@ export default function LoanEditPage() {
       const nextPaymentDate = calcNextPaymentDate(updatedSchedule)
       const newStatus = calcLoanStatus(updatedSchedule, existingPayments ?? [], nextPaymentDate)
 
-      // Update loan
+      // Update loan metadata
       const { error } = await supabase.from('loans').update({
-        capital,
         interest_rate: interestRate,
         payment_type: paymentType,
         term_weeks: termWeeks,
@@ -100,11 +99,21 @@ export default function LoanEditPage() {
         status: newStatus,
       }).eq('id', id!)
       if (error) throw error
+
+      // Apply balance delta for capital change via RPC
+      const { data: balanceResult, error: balanceError } = await supabase.rpc('edit_loan_with_balance_delta', {
+        p_loan_id: id,
+        p_new_capital: capital
+      })
+      if (balanceError) throw new Error(balanceError.message)
+      if (balanceResult && !balanceResult.success) throw new Error(balanceResult.error)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loan', id] })
       queryClient.invalidateQueries({ queryKey: ['loans'] })
       queryClient.invalidateQueries({ queryKey: ['loan-schedule', id] })
+      queryClient.invalidateQueries({ queryKey: ['collection-breakdown'] })
+      queryClient.invalidateQueries({ queryKey: ['team-users'] })
       navigate(-1)
     }
   })
