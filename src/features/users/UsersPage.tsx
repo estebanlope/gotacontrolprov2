@@ -355,7 +355,7 @@ export default function UsersPage() {
         {user?.role === 'admin' && users.some(u => u.role === 'cobrador') && (
           <Card>
             <p className="text-sm font-semibold text-gray-700 mb-3">📊 Resumen de Cobradores</p>
-            <div className="grid grid-cols-4 gap-3 text-center">
+            <div className="grid grid-cols-2 gap-3 text-center">
               <div>
                 <p className="text-xs text-gray-500">Saldo total</p>
                 <p className="text-sm font-bold text-green-700 mt-0.5">{formatCurrency(cobradorTotals.balance)}</p>
@@ -398,7 +398,7 @@ export default function UsersPage() {
 
                 {/* Portfolio stats — only for cobradores */}
                 {u.role === 'cobrador' && (
-                  <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-100">
+                  <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-gray-100">
                     <div>
                       <p className="text-xs text-gray-500">Préstamos activos</p>
                       <p className="text-sm font-semibold text-gray-900">{loanStatsByUser[u.id]?.active_loans_count ?? 0}</p>
