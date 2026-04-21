@@ -135,9 +135,6 @@ export default function UsersPage() {
     packageValueByUser.map(pv => [pv.created_by, pv.totalPending])
   )
 
-  // Calculate total team package value
-  const totalTeamPackageValue = allTeamPendingSchedule.reduce((sum, entry) => sum + (entry.amount ?? 0), 0)
-
   // Global totals across all cobradores
   const cobradorTotals = useMemo(() => {
     const cobradores = users.filter(u => u.role === 'cobrador')
