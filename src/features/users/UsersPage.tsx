@@ -76,6 +76,48 @@ export default function UsersPage() {
     staleTime: 1000 * 60,
   })
 
+  // Total package value per cobrador (all pending schedule entries)
+  const { data: packageValueByUser = [] } = useQuery<{ created_by: string; totalPending: number }[]>({
+    queryKey: ['package-value-by-cobrador', user?.team_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('loan_schedule')
+        .select('amount, loans!inner(created_by)')
+        .eq('loans.team_id', user!.team_id!)
+        .eq('status', 'pending')
+      if (error) throw error
+
+      // Group by created_by (cobrador)
+      const map: Record<string, number> = {}
+      for (const entry of data ?? []) {
+        const cobradorId = (entry.loans as any)?.created_by
+        if (!cobradorId) continue
+        if (!map[cobradorId]) map[cobradorId] = 0
+        map[cobradorId] += entry.amount ?? 0
+      }
+
+      return Object.entries(map).map(([created_by, totalPending]) => ({ created_by, totalPending }))
+    },
+    enabled: !!user?.team_id,
+    staleTime: 1000 * 60,
+  })
+
+  // All pending schedule for team total
+  const { data: allTeamPendingSchedule = [] } = useQuery<{ amount: number }[]>({
+    queryKey: ['all-team-pending-schedule', user?.team_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('loan_schedule')
+        .select('amount')
+        .eq('loans.team_id', user!.team_id!)
+        .eq('status', 'pending')
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!user?.team_id,
+    staleTime: 1000 * 60,
+  })
+
   // Group loan stats by cobrador id
   const loanStatsByUser = useMemo(() => {
     const map: Record<string, { active_loans_count: number; capital_in_street: number }> = {}
@@ -88,6 +130,14 @@ export default function UsersPage() {
     return map
   }, [activeLoans])
 
+  // Map package values by user ID for easy lookup
+  const packageValueMap = Object.fromEntries(
+    packageValueByUser.map(pv => [pv.created_by, pv.totalPending])
+  )
+
+  // Calculate total team package value
+  const totalTeamPackageValue = allTeamPendingSchedule.reduce((sum, entry) => sum + (entry.amount ?? 0), 0)
+
   // Global totals across all cobradores
   const cobradorTotals = useMemo(() => {
     const cobradores = users.filter(u => u.role === 'cobrador')
@@ -96,10 +146,11 @@ export default function UsersPage() {
         balance: acc.balance + (u.balance ?? 0),
         active_loans_count: acc.active_loans_count + (loanStatsByUser[u.id]?.active_loans_count ?? 0),
         capital_in_street: acc.capital_in_street + (loanStatsByUser[u.id]?.capital_in_street ?? 0),
+        total_package_value: acc.total_package_value + (packageValueMap[u.id] ?? 0),
       }),
-      { balance: 0, active_loans_count: 0, capital_in_street: 0 }
+      { balance: 0, active_loans_count: 0, capital_in_street: 0, total_package_value: 0 }
     )
-  }, [users, loanStatsByUser])
+  }, [users, loanStatsByUser, packageValueMap])
 
   // Validate using assigned_capital sum (not balance)
   const totalAssigned = users.reduce((sum, u) => sum + (u.assigned_capital ?? 0), 0)
@@ -323,7 +374,7 @@ export default function UsersPage() {
         {user?.role === 'admin' && users.some(u => u.role === 'cobrador') && (
           <Card>
             <p className="text-sm font-semibold text-gray-700 mb-3">📊 Resumen de Cobradores</p>
-            <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="grid grid-cols-4 gap-3 text-center">
               <div>
                 <p className="text-xs text-gray-500">Saldo total</p>
                 <p className="text-sm font-bold text-green-700 mt-0.5">{formatCurrency(cobradorTotals.balance)}</p>
@@ -335,6 +386,10 @@ export default function UsersPage() {
               <div>
                 <p className="text-xs text-gray-500">Capital en calle</p>
                 <p className="text-sm font-bold text-orange-600 mt-0.5">{formatCurrency(cobradorTotals.capital_in_street)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Valor total del paquete</p>
+                <p className="text-sm font-bold text-purple-700 mt-0.5">{formatCurrency(cobradorTotals.total_package_value)}</p>
               </div>
             </div>
           </Card>
@@ -362,7 +417,7 @@ export default function UsersPage() {
 
                 {/* Portfolio stats — only for cobradores */}
                 {u.role === 'cobrador' && (
-                  <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-gray-100">
+                  <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-100">
                     <div>
                       <p className="text-xs text-gray-500">Préstamos activos</p>
                       <p className="text-sm font-semibold text-gray-900">{loanStatsByUser[u.id]?.active_loans_count ?? 0}</p>
@@ -370,6 +425,10 @@ export default function UsersPage() {
                     <div>
                       <p className="text-xs text-gray-500">Capital en calle</p>
                       <p className="text-sm font-semibold text-orange-600">{formatCurrency(loanStatsByUser[u.id]?.capital_in_street ?? 0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Valor total del paquete</p>
+                      <p className="text-sm font-semibold text-purple-700">{formatCurrency(packageValueMap[u.id] ?? 0)}</p>
                     </div>
                   </div>
                 )}

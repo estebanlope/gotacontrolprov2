@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase'
 import { db } from '@/lib/db'
 import { enqueueSync } from '@/lib/syncQueue'
 import { useAuth } from '@/context/AuthContext'
+import { useGeolocation } from '@/hooks/useGeolocation'
 import PageHeader from '@/components/layout/PageHeader'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
@@ -43,6 +44,7 @@ export default function ClientForm() {
   const queryClient = useQueryClient()
   const { id } = useParams<{ id?: string }>()
   const isEdit = !!id
+  const geolocation = useGeolocation()
 
   const { data: existingClient } = useQuery<Client | null>({
     queryKey: ['client', id],
@@ -61,8 +63,8 @@ export default function ClientForm() {
     address: '',
     notes: '',
   })
-  const [lat, setLat] = useState<number | null>(4.711)
-  const [lng, setLng] = useState<number | null>(-74.0721)
+  const [lat, setLat] = useState<number | null>(5.0692)
+  const [lng, setLng] = useState<number | null>(-75.5159)
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -70,7 +72,8 @@ export default function ClientForm() {
   const [initialized, setInitialized] = useState(false)
 
   useEffect(() => {
-    if (existingClient && !initialized) {
+    if (isEdit && existingClient && !initialized) {
+      // Modo edición: cargar datos del cliente existente
       setForm({
         full_name: existingClient.full_name,
         cedula: existingClient.cedula,
@@ -82,8 +85,13 @@ export default function ClientForm() {
       setLng(existingClient.lng)
       setPhotoPreview(existingClient.photo_url)
       setInitialized(true)
+    } else if (!isEdit && !initialized && !geolocation.loading) {
+      // Modo crear: usar ubicación actual del cobrador
+      setLat(geolocation.lat)
+      setLng(geolocation.lng)
+      setInitialized(true)
     }
-  }, [existingClient, initialized])
+  }, [existingClient, initialized, isEdit, geolocation.loading, geolocation.lat, geolocation.lng])
 
   const set = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -215,9 +223,14 @@ export default function ClientForm() {
           <label className="text-sm font-medium text-gray-700 block mb-1">
             Ubicación (toca el mapa para marcar)
           </label>
+          {geolocation.loading && !isEdit && (
+            <div className="text-xs text-blue-600 mb-2 flex items-center gap-1">
+              <span className="animate-spin">⏳</span> Detectando tu ubicación...
+            </div>
+          )}
           <div className="rounded-xl overflow-hidden border border-gray-200 h-56">
             <MapContainer
-              center={[lat ?? 4.711, lng ?? -74.0721]}
+              center={[lat ?? 5.0692, lng ?? -75.5159]}
               zoom={13}
               style={{ height: '100%', width: '100%' }}
             >

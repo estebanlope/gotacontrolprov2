@@ -44,6 +44,25 @@ export default function CollectionBreakdown({ teamId, userId, isAdmin, dateFrom,
     enabled: !!teamId && isAdmin,
   })
 
+  // Query for all pending schedule entries (for "Valor total del paquete")
+  const { data: allPendingSchedule } = useQuery({
+    queryKey: ['all-pending-schedule', teamId, userId, isAdmin],
+    queryFn: async () => {
+      let q = supabase
+        .from('loan_schedule')
+        .select('amount, loans!inner(team_id, created_by)')
+        .eq('loans.team_id', teamId)
+        .eq('status', 'pending')
+
+      if (!isAdmin) q = q.eq('loans.created_by', userId)
+
+      const { data } = await q
+      return data ?? []
+    },
+    enabled: !!teamId && preset === 'today',
+    staleTime: 1000 * 60,
+  })
+
   const { data } = useQuery({
     queryKey: ['collection-breakdown', teamId, userId, isAdmin, dateFrom, dateTo],
     queryFn: async () => {
@@ -63,6 +82,7 @@ export default function CollectionBreakdown({ teamId, userId, isAdmin, dateFrom,
         .from('loan_schedule')
         .select('amount, loans!inner(team_id, created_by)')
         .eq('loans.team_id', teamId)
+        .eq('status', 'pending')
         .gte('due_date', dateFrom)
         .lte('due_date', dateTo)
 
@@ -114,6 +134,9 @@ export default function CollectionBreakdown({ teamId, userId, isAdmin, dateFrom,
     ? (teamUsers?.reduce((sum, u) => sum + (u.balance ?? 0), 0) ?? 0)
     : (userData?.balance ?? 0)
 
+  // Calculate total package value (all pending schedule entries)
+  const totalPackageValue = (allPendingSchedule ?? []).reduce((s: number, e: { amount: number }) => s + e.amount, 0)
+
   return (
     <Card>
       <CardTitle className="mb-3">💳 Desglose de Recaudo</CardTitle>
@@ -143,26 +166,38 @@ export default function CollectionBreakdown({ teamId, userId, isAdmin, dateFrom,
         </button>
       </div>
 
-      {isToday && (
-        <div className="mt-4">
-          <div className="bg-blue-50 rounded-xl p-3 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500">💰 Saldo disponible</p>
-              <p className="text-sm text-gray-400 mt-0.5">
-                {isAdmin ? 'Suma de saldos de todos los usuarios' : 'Tu saldo asignado'}
-              </p>
-              {hasPending && (
-                <p className="text-xs text-amber-600 font-medium mt-1">
-                  ⚠️ {pendingCount} operación{pendingCount > 1 ? 'es' : ''} pendiente{pendingCount > 1 ? 's' : ''} de sincronizar
-                </p>
-              )}
-            </div>
-            <span className={`text-lg font-bold ${hasPending ? 'text-amber-600' : 'text-blue-700'}`}>
-              {formatCurrency(dynamicBalance)}
-            </span>
-          </div>
-        </div>
-      )}
+       {isToday && (
+         <div className="mt-4">
+           <div className="bg-blue-50 rounded-xl p-3 flex items-center justify-between">
+             <div>
+               <p className="text-xs text-gray-500">💰 Saldo disponible</p>
+               <p className="text-sm text-gray-400 mt-0.5">
+                 {isAdmin ? 'Suma de saldos de todos los usuarios' : 'Tu saldo asignado'}
+               </p>
+               {hasPending && (
+                 <p className="text-xs text-amber-600 font-medium mt-1">
+                   ⚠️ {pendingCount} operación{pendingCount > 1 ? 'es' : ''} pendiente{pendingCount > 1 ? 's' : ''} de sincronizar
+                 </p>
+               )}
+             </div>
+             <span className={`text-lg font-bold ${hasPending ? 'text-amber-600' : 'text-blue-700'}`}>
+               {formatCurrency(dynamicBalance)}
+             </span>
+           </div>
+
+           <div className="bg-purple-50 rounded-xl p-3 flex items-center justify-between mt-3">
+             <div>
+               <p className="text-xs text-gray-500">📦 Valor total del paquete</p>
+               <p className="text-sm text-gray-400 mt-0.5">
+                 {isAdmin ? 'Todos los préstamos pendientes' : 'Tus préstamos pendientes'}
+               </p>
+             </div>
+             <span className="text-lg font-bold text-purple-700">
+               {formatCurrency(totalPackageValue)}
+             </span>
+           </div>
+         </div>
+       )}
     </Card>
   )
 }
