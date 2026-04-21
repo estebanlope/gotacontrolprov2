@@ -102,22 +102,6 @@ export default function UsersPage() {
     staleTime: 1000 * 60,
   })
 
-  // All pending schedule for team total
-  const { data: allTeamPendingSchedule = [] } = useQuery<{ amount: number }[]>({
-    queryKey: ['all-team-pending-schedule', user?.team_id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('loan_schedule')
-        .select('amount')
-        .eq('loans.team_id', user!.team_id!)
-        .eq('status', 'pending')
-      if (error) throw error
-      return data ?? []
-    },
-    enabled: !!user?.team_id,
-    staleTime: 1000 * 60,
-  })
-
   // Group loan stats by cobrador id
   const loanStatsByUser = useMemo(() => {
     const map: Record<string, { active_loans_count: number; capital_in_street: number }> = {}
