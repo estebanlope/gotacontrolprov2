@@ -19,9 +19,22 @@ export function formatCurrency(amount: number): string {
 
 /**
  * Formats a date string (ISO) to a human-readable format in Spanish.
+ * For YYYY-MM-DD dates (loan dates), interprets as Colombian time (UTC-5).
+ * For full ISO strings with time, uses the time as-is.
  */
 export function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('es-CO', {
+  // If dateStr has time info (contains 'T'), use it as full ISO datetime
+  if (dateStr.includes('T')) {
+    return new Date(dateStr).toLocaleDateString('es-CO', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
+  }
+
+  // For YYYY-MM-DD format: interpret as Colombia time (UTC-5)
+  // by adding T05:00:00Z (which is Colombia midnight in UTC)
+  return new Date(dateStr + 'T05:00:00Z').toLocaleDateString('es-CO', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
@@ -64,6 +77,23 @@ export function toColombiaDateISO(date: Date): string {
  */
 export function nowColombiaISO(): string {
   return new Date().toISOString()
+}
+
+/**
+ * Returns current datetime as ISO 8601 string with local timezone offset.
+ * Example: 2026-04-22T14:30:00-05:00 for Colombia
+ * This ensures created_at reflects the actual local time when record was created,
+ * making date filters work correctly regardless of user's timezone.
+ */
+export function getLocalDateTimeISO(): string {
+  const now = new Date()
+  const offset = now.getTimezoneOffset()
+  const sign = offset <= 0 ? '+' : '-'
+  const absOffset = Math.abs(offset)
+  const hours = String(Math.floor(absOffset / 60)).padStart(2, '0')
+  const minutes = String(absOffset % 60).padStart(2, '0')
+
+  return now.toISOString().replace('Z', `${sign}${hours}:${minutes}`)
 }
 
 /**

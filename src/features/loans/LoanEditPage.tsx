@@ -50,7 +50,8 @@ export default function LoanEditPage() {
       const capital = parseFloat(form.capital)
       const interestRate = parseFloat(form.interest_rate)
       const termWeeks = parseInt(form.term_weeks)
-      const disbursementDate = new Date(form.disbursement_date + 'T12:00:00')
+      // Fix: T17:00:00Z = 12:00 noon Colombia time (UTC-5). Z ensures UTC interpretation
+      const disbursementDate = new Date(form.disbursement_date + 'T17:00:00Z')
       const paymentType = form.payment_type
 
       // Recalculate due date

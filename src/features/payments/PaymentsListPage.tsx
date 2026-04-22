@@ -21,7 +21,7 @@ const METHOD_FILTERS: { value: MethodFilter; label: string }[] = [
 ]
 
 function formatSectionDate(dateStr: string): string {
-  const date = new Date(dateStr + 'T12:00:00')
+  const date = new Date(dateStr + 'T17:00:00Z')
   return date.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 }
 

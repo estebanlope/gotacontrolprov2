@@ -14,6 +14,7 @@ import { useGeolocation } from '@/hooks/useGeolocation'
 import PageHeader from '@/components/layout/PageHeader'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
+import { getLocalDateTimeISO } from '@/lib/utils'
 import type { Client } from '@/types'
 
 // Fix Leaflet default marker icon
@@ -141,20 +142,20 @@ export default function ClientForm() {
         }
       }
 
-      const clientData: Client = {
-        id: clientId,
-        team_id: user!.team_id!,
-        created_by: isEdit ? (existingClient?.created_by ?? user!.id) : user!.id,
-        full_name: form.full_name.trim(),
-        cedula: form.cedula.trim(),
-        phone: form.phone.trim(),
-        address: form.address.trim(),
-        lat,
-        lng,
-        notes: form.notes.trim() || null,
-        photo_url,
-        created_at: isEdit ? (existingClient?.created_at ?? new Date().toISOString()) : new Date().toISOString(),
-      }
+       const clientData: Client = {
+         id: clientId,
+         team_id: user!.team_id!,
+         created_by: isEdit ? (existingClient?.created_by ?? user!.id) : user!.id,
+         full_name: form.full_name.trim(),
+         cedula: form.cedula.trim(),
+         phone: form.phone.trim(),
+         address: form.address.trim(),
+         lat,
+         lng,
+         notes: form.notes.trim() || null,
+         photo_url,
+         created_at: isEdit ? (existingClient?.created_at ?? getLocalDateTimeISO()) : getLocalDateTimeISO(),
+       }
 
       // Save locally always
       await db.clients.put({ ...clientData, synced: false })

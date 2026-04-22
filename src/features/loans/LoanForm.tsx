@@ -15,7 +15,7 @@ import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
-import { formatDate, formatCurrency, todayISO } from '@/lib/utils'
+import { formatDate, formatCurrency, todayISO, getLocalDateTimeISO } from '@/lib/utils'
 import type { Loan, PaymentType, Client, Config } from '@/types'
 
 const PAYMENT_TYPE_OPTIONS = [
@@ -83,7 +83,8 @@ export default function LoanForm() {
   const capital = parseFloat(form.capital) || 0
   const interestRate = parseFloat(form.interest_rate) || 20
   const termWeeks = parseInt(form.term_weeks) || 4
-  const disbDate = new Date(form.disbursement_date + 'T12:00:00')
+  // Fix: T17:00:00Z = 12:00 noon Colombia time (UTC-5). Z ensures UTC interpretation
+  const disbDate = new Date(form.disbursement_date + 'T17:00:00Z')
   const dueDate = calcDueDate(disbDate, termWeeks)
   const totalAmount = capital + capital * (interestRate / 100)
 
@@ -121,9 +122,10 @@ export default function LoanForm() {
         throw new Error('Este cliente ya tiene un préstamo activo')
       }
 
-      const id = uuidv4()
-      const disbDateObj = new Date(form.disbursement_date + 'T12:00:00')
-      const dueDateObj = calcDueDate(disbDateObj, termWeeks)
+       const id = uuidv4()
+       // Fix: T17:00:00Z = 12:00 noon Colombia time (UTC-5). Z ensures UTC interpretation
+       const disbDateObj = new Date(form.disbursement_date + 'T17:00:00Z')
+       const dueDateObj = calcDueDate(disbDateObj, termWeeks)
 
       const schedule = generateSchedule(
         id, disbDateObj, capital, interestRate, form.payment_type, termWeeks
@@ -138,21 +140,21 @@ export default function LoanForm() {
         scheduleWithIds.map(s => ({ ...s, status: 'pending' as const }))
       )
 
-      const newLoan: Loan = {
-        id,
-        team_id: user!.team_id!,
-        client_id: form.client_id,
-        created_by: user!.id,
-        capital,
-        interest_rate: interestRate,
-        payment_type: form.payment_type,
-        term_weeks: termWeeks,
-        disbursement_date: form.disbursement_date,
-        due_date: dueDateObj.toISOString().split('T')[0],
-        next_payment_date: nextPaymentDate,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-      }
+       const newLoan: Loan = {
+         id,
+         team_id: user!.team_id!,
+         client_id: form.client_id,
+         created_by: user!.id,
+         capital,
+         interest_rate: interestRate,
+         payment_type: form.payment_type,
+         term_weeks: termWeeks,
+         disbursement_date: form.disbursement_date,
+         due_date: dueDateObj.toISOString().split('T')[0],
+         next_payment_date: nextPaymentDate,
+         status: 'pending',
+         created_at: getLocalDateTimeISO(),
+       }
 
       // Save locally
       await db.loans.put({ ...newLoan, synced: false })

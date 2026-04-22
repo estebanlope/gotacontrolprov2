@@ -10,6 +10,7 @@ import PageHeader from '@/components/layout/PageHeader'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
+import { getLocalDateTimeISO } from '@/lib/utils'
 import type { Expense, ExpenseType } from '@/types'
 
 const EXPENSE_TYPE_OPTIONS = [
@@ -47,17 +48,17 @@ export default function ExpenseForm() {
     mutationFn: async () => {
       if (!validate()) throw new Error('Validation failed')
 
-      const id = uuidv4()
-      const amount = parseFloat(form.amount)
-      const newExpense: Expense = {
-        id,
-        team_id: user!.team_id!,
-        created_by: user!.id,
-        type: form.type,
-        amount,
-        notes: form.notes.trim() || null,
-        created_at: new Date().toISOString(),
-      }
+       const id = uuidv4()
+       const amount = parseFloat(form.amount)
+       const newExpense: Expense = {
+         id,
+         team_id: user!.team_id!,
+         created_by: user!.id,
+         type: form.type,
+         amount,
+         notes: form.notes.trim() || null,
+         created_at: getLocalDateTimeISO(),
+       }
 
       await db.expenses.put({ ...newExpense, synced: false })
 

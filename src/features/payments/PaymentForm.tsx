@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { v4 as uuidv4 } from 'uuid'
@@ -12,7 +12,7 @@ import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
-import { formatDate, formatCurrency, todayISO } from '@/lib/utils'
+import { formatDate, formatCurrency, todayISO, getLocalDateTimeISO } from '@/lib/utils'
 import { Search } from 'lucide-react'
 import type { Loan, Payment, PaymentMethod, LoanScheduleEntry } from '@/types'
 
@@ -31,7 +31,7 @@ export default function PaymentForm() {
   const [form, setForm] = useState({
     loan_id: preselectedLoanId,
     amount: '',
-    method: 'transfer' as PaymentMethod,
+    method: '' as PaymentMethod,
     payment_date: todayISO(),
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -56,6 +56,21 @@ export default function PaymentForm() {
 
   const selectedLoan = loans.find(l => l.id === form.loan_id) as (Loan & { clients?: { full_name: string; cedula: string } }) | undefined
 
+  // Load schedule entries for the selected loan to get first pending payment
+  const { data: scheduleEntries = [] } = useQuery<LoanScheduleEntry[]>({
+    queryKey: ['loan-schedule-pending', form.loan_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('loan_schedule')
+        .select('*')
+        .eq('loan_id', form.loan_id)
+        .eq('status', 'pending')
+        .order('due_date', { ascending: true })
+      return (data ?? []) as LoanScheduleEntry[]
+    },
+    enabled: !!form.loan_id,
+  })
+
   const set = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }))
     setErrors(prev => ({ ...prev, [field]: '' }))
@@ -65,6 +80,7 @@ export default function PaymentForm() {
     const errs: Record<string, string> = {}
     if (!form.loan_id) errs.loan_id = 'Selecciona un préstamo'
     if (!form.amount || parseFloat(form.amount) <= 0) errs.amount = 'Monto debe ser mayor a 0'
+    if (!form.method) errs.method = 'Selecciona un método de pago'
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -76,16 +92,16 @@ export default function PaymentForm() {
       const id = uuidv4()
       const amount = parseFloat(form.amount)
 
-      const newPayment: Payment = {
-        id,
-        loan_id: form.loan_id,
-        team_id: user!.team_id!,
-        created_by: user!.id,
-        amount,
-        method: form.method,
-        payment_date: form.payment_date,
-        created_at: new Date().toISOString(),
-      }
+       const newPayment: Payment = {
+         id,
+         loan_id: form.loan_id,
+         team_id: user!.team_id!,
+         created_by: user!.id,
+         amount,
+         method: form.method,
+         payment_date: form.payment_date,
+         created_at: getLocalDateTimeISO(),
+       }
 
       // Save locally
       await db.payments.put({ ...newPayment, synced: false })
@@ -198,6 +214,17 @@ export default function PaymentForm() {
 
   const selectedLoanOption = loanOptions.find(o => o.value === form.loan_id)
 
+  useEffect(() => {
+    // Auto-fill amount with first pending payment amount, or leave empty if no pending payments
+    if (form.loan_id && scheduleEntries.length > 0) {
+      const firstPending = scheduleEntries[0]
+      set('amount', firstPending.amount.toString())
+    } else if (form.loan_id && scheduleEntries.length === 0) {
+      // Clear amount if loan was selected but has no pending payments
+      set('amount', '')
+    }
+  }, [form.loan_id, scheduleEntries])
+
   return (
     <div>
       <PageHeader title="Registrar Pago" showBack />
@@ -269,10 +296,12 @@ export default function PaymentForm() {
         />
 
         <Select
-          label="Método de pago"
+          label="Método de pago *"
+          placeholder="Selecciona un método..."
           options={METHOD_OPTIONS}
           value={form.method}
           onChange={e => set('method', e.target.value as PaymentMethod)}
+          error={errors.method}
         />
 
         <Input
