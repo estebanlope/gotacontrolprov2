@@ -301,7 +301,7 @@ export default {
     // 0 13 * * * = 8am Colombia (UTC-5)
     // 0 1 * * * = 8pm Colombia (UTC-5)
     // 0 10 * * 0 = 5am Colombia domingo
-    if(event.cron === '0 10 * * 0'){
+    if(_event.cron === '0 10 * * 0'){
         await runWeeklyCleanup(env)
     } else {
         const isClosing = new Date().getUTCHours() === 1
