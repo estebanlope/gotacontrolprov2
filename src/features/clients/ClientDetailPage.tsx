@@ -121,7 +121,7 @@ export default function ClientDetailPage() {
         {/* Photo lightbox */}
         {photoOpen && client.photo_url && (
           <div
-            className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+            className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-4"
             onClick={() => setPhotoOpen(false)}
           >
             <img

@@ -10,10 +10,9 @@ export default function CapitalPosition({ teamId, dateFrom, dateTo }: Props) {
   const { data } = useQuery({
     queryKey: ['capital-position', teamId, dateFrom, dateTo],
     queryFn: async () => {
-      const [configRes, loansRes, paymentsRes, expensesRes] = await Promise.all([
+      const [configRes, loansRes, expensesRes] = await Promise.all([
         supabase.from('config').select('capital_base').eq('team_id', teamId).single(),
         supabase.from('loans').select('capital, interest_rate, status').eq('team_id', teamId),
-        supabase.from('payments').select('amount').eq('team_id', teamId),
         supabase.from('expenses').select('amount').eq('team_id', teamId),
       ])
 
@@ -31,10 +30,8 @@ export default function CapitalPosition({ teamId, dateFrom, dateTo }: Props) {
       }
 
       const gastos = (expensesRes.data ?? []).reduce((s, e) => s + e.amount, 0)
-      const recaudado = (paymentsRes.data ?? []).reduce((s, p) => s + p.amount, 0)
-      const capitalDisponible = capitalBase - capitalEnCalle - gastos + recaudado
 
-      return { capitalBase, capitalEnCalle, interesesRecuperados, gastos, recaudado, capitalDisponible }
+      return { capitalBase, capitalEnCalle, interesesRecuperados, gastos }
     },
     enabled: !!teamId,
     staleTime: 1000 * 60,
@@ -50,8 +47,6 @@ export default function CapitalPosition({ teamId, dateFrom, dateTo }: Props) {
         <StatCard label="Capital en Calle" value={formatCurrency(data.capitalEnCalle)} icon="🚶" colorClass="text-orange-600" />
         <StatCard label="Intereses Recuperados" value={formatCurrency(data.interesesRecuperados)} icon="📈" colorClass="text-green-600" />
         <StatCard label="Gastos" value={formatCurrency(data.gastos)} icon="📉" colorClass="text-red-600" />
-        <StatCard label="Recaudado" value={formatCurrency(data.recaudado)} icon="✅" colorClass="text-green-700" />
-        <StatCard label="Capital Disponible" value={formatCurrency(data.capitalDisponible)} icon="💵" colorClass={data.capitalDisponible >= 0 ? 'text-blue-700' : 'text-red-700'} />
       </div>
     </Card>
   )

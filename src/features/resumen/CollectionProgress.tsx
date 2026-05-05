@@ -20,7 +20,6 @@ export default function CollectionProgress({ teamId, userId, isAdmin, dateFrom, 
         .from('loan_schedule')
         .select('amount, loans!inner(team_id, created_by)')
         .eq('loans.team_id', teamId)
-        .eq('status', 'pending')
         .gte('due_date', dateFrom)
         .lte('due_date', dateTo)
 

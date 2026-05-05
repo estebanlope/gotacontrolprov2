@@ -164,6 +164,57 @@ function paymentTypeLabel(type: string): string {
   return labels[type] ?? type
 }
 
+// ─── Weekly cleanup (Cron) ───────────────────────────────────────────────────
+async function runWeeklyCleanup(env: Env): Promise<void> {
+  const res = await supabaseFetch(env, `/teams?telegram_bot_active=eq.true&select=id,name,telegram_bot_token,telegram_chat_id`)
+  const teams: { id: string; name: string; telegram_bot_token: string; telegram_chat_id: string }[] = await res.json()
+
+  const today = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' })
+
+  for (const team of teams) {
+    try {
+      const rpcRes = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/cleanup_inactive_clients`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({ p_team_id: team.id, p_months: 6 }),
+      })
+
+      const result: { success: boolean; clients_deleted: number; error?: string } = await rpcRes.json()
+
+      let message: string
+      if (result.success) {
+        message = [
+          `🧹 *LIMPIEZA SEMANAL AUTOMÁTICA*`,
+          `🏢 ${team.name}`,
+          `📅 ${today}`,
+          ``,
+          result.clients_deleted > 0
+            ? `🗑️ *Se eliminaron ${result.clients_deleted} cliente(s)* inactivos con más de 6 meses sin préstamos.`
+            : `✅ *Sin clientes para eliminar.* Todos los clientes tienen actividad reciente.`,
+          ``,
+          `⏰ Próxima limpieza: domingo siguiente`,
+        ].join('\n')
+      } else {
+        message = [
+          `⚠️ *ERROR EN LIMPIEZA SEMANAL*`,
+          `🏢 ${team.name}`,
+          `📅 ${today}`,
+          ``,
+          `❌ Error: ${result.error ?? 'Error desconocido'}`,
+        ].join('\n')
+      }
+
+      await sendTelegram(team.telegram_bot_token, team.telegram_chat_id, message)
+    } catch (err) {
+      console.error(`[Cleanup] Error for team ${team.id}:`, err)
+    }
+  }
+}
+
 // ─── Daily summary (Cron) ────────────────────────────────────────────────────
 async function sendDailySummaries(env: Env, isClosing: boolean): Promise<void> {
   const res = await supabaseFetch(env, `/teams?telegram_bot_active=eq.true&select=id,name,telegram_bot_token,telegram_chat_id`)
@@ -179,29 +230,47 @@ async function sendDailySummaries(env: Env, isClosing: boolean): Promise<void> {
   }
 }
 
+// ─── CORS Helpers ─────────────────────────────────────────────────────────────
+const CORS_HEADERS: Record<string, string> = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+function corsResponse(body: string, status: number, extra: Record<string, string> = {}): Response {
+    return new Response(body, {
+        status,
+        headers: {...CORS_HEADERS, 'Content-type': 'application/json', ...extra},
+    })
+}
+
 // ─── Main handler ─────────────────────────────────────────────────────────────
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    if(request.method === 'OPTIONS'){
+      return new Response(null, {status: 204, headers: CORS_HEADERS})
+    }
+
     const url = new URL(request.url)
     const path = url.pathname
 
     if (request.method !== 'POST') {
-      return new Response('Method not allowed', { status: 405 })
+      return corsResponse('Method not allowed', 405)
     }
 
     let body: Record<string, unknown>
     try {
       body = await request.json() as Record<string, unknown>
     } catch {
-      return new Response('Invalid JSON', { status: 400 })
+      return corsResponse('Invalid JSON', 400)
     }
 
     const teamId = String(body.team_id ?? '')
 
-    if (!teamId) return new Response('Missing team_id', { status: 400 })
+    if (!teamId) return corsResponse('Missing team_id', 400)
 
     const team = await getTeamBot(env, teamId)
-    if (!team) return new Response('Telegram not configured for this team', { status: 200 })
+    if (!team) return corsResponse(JSON.stringify({ok: true, skipped: true}), 200)
 
     let message = ''
 
@@ -217,22 +286,27 @@ export default {
         const dateTo = String(body.date_to ?? new Date().toISOString().split('T')[0])
         message = await formatSummaryMessage(env, teamId, dateFrom, dateTo, team.name)
       } else {
-        return new Response('Not found', { status: 404 })
+        return corsResponse('Not found', 400)
       }
 
       await sendTelegram(team.telegram_bot_token!, team.telegram_chat_id!, message)
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return corsResponse(JSON.stringify({ ok: true }), 200)
     } catch (err) {
       console.error('[Worker] Error:', err)
-      return new Response('Internal error', { status: 500 })
+      return corsResponse('Internal error', 500)
     }
   },
 
   async scheduled(_event: { scheduledTime: number; cron: string }, env: Env): Promise<void> {
     // 0 13 * * * = 8am Colombia (UTC-5)
     // 0 1 * * * = 8pm Colombia (UTC-5)
-    const isClosing = new Date().getUTCHours() === 1
-    await sendDailySummaries(env, isClosing)
+    // 0 10 * * 0 = 5am Colombia domingo
+    if(event.cron === '0 10 * * 0'){
+        await runWeeklyCleanup(env)
+    } else {
+        const isClosing = new Date().getUTCHours() === 1
+        await sendDailySummaries(env, isClosing)
+    }
   },
 }
 

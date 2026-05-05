@@ -77,12 +77,11 @@ export default function CollectionBreakdown({ teamId, userId, isAdmin, dateFrom,
 
       const { data: payments } = await q
 
-      // Expected total from schedule entries up to dateTo
+      // Expected total from schedule entries up to dateTo (pending + paid)
       let eQ = supabase
         .from('loan_schedule')
         .select('amount, loans!inner(team_id, created_by)')
         .eq('loans.team_id', teamId)
-        .eq('status', 'pending')
         .gte('due_date', dateFrom)
         .lte('due_date', dateTo)
 
