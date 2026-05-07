@@ -164,7 +164,6 @@ export default function UsersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['config', user?.team_id] })
-      queryClient.invalidateQueries({ queryKey: ['capital-position'] })
       setEditingCapital(false)
     }
   })

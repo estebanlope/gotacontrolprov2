@@ -6,14 +6,15 @@ import { useAuth } from '@/context/AuthContext'
 import PageHeader from '@/components/layout/PageHeader'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import { formatDate, formatCurrency, todayISO } from '@/lib/utils'
+import { formatDate, formatCurrency, todayISO, toColombiaDateISO } from '@/lib/utils'
 import { loanStatusLabel, loanStatusColors, paymentTypeLabel, calcNumInstallments } from '@/lib/loanCalculations'
 import type { LoanStatus } from '@/types'
 import { Plus, DollarSign, MapPin } from 'lucide-react'
 
-const STATUS_FILTERS: { value: LoanStatus | 'all' | 'today'; label: string }[] = [
+const STATUS_FILTERS: { value: LoanStatus | 'all' | 'today' | 'new'; label: string }[] = [
   { value: 'all', label: 'Todos' },
   { value: 'today', label: '📅 Hoy' },
+  { value: 'new', label: '🆕 Nuevos' },
   { value: 'active', label: 'Activos' },
   { value: 'overdue', label: 'En mora' },
   { value: 'pending', label: 'Sin iniciar' },
@@ -24,13 +25,14 @@ export default function LoansListPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { data: loans = [], isLoading } = useLoans()
-  const [statusFilter, setStatusFilter] = useState<LoanStatus | 'all' | 'today'>('today')
+  const [statusFilter, setStatusFilter] = useState<LoanStatus | 'all' | 'today' | 'new'>('today')
   const [showRoute, setShowRoute] = useState(false)
 
   const today = todayISO()
   const filtered = loans.filter(l => {
     if (statusFilter === 'all') return true
     if (statusFilter === 'today') return !!l.next_payment_date && l.next_payment_date <= today
+    if (statusFilter === 'new') return toColombiaDateISO(new Date(l.created_at)) === today
     return l.status === statusFilter
   })
 
@@ -108,9 +110,12 @@ export default function LoansListPage() {
           const totalAmount = loan.capital * (1 + loan.interest_rate / 100)
           const numInstallments = calcNumInstallments(loan.payment_type, loan.term_weeks)
           const installment = numInstallments > 0 ? totalAmount / numInstallments : 0
+          const isNewToday = toColombiaDateISO(new Date(loan.created_at)) === today
 
           const borderColor =
-            loan.status === 'paid'
+            isNewToday
+              ? 'border-l-4 border-l-purple-500'
+              : loan.status === 'paid'
               ? 'border-l-4 border-l-green-500'
               : loan.status === 'overdue' || (loan.next_payment_date && loan.next_payment_date < today)
               ? 'border-l-4 border-l-orange-500'

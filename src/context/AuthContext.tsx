@@ -2,6 +2,14 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { supabase } from '@/lib/supabase'
 import type { AuthUser, UserRole } from '@/types'
 
+const SESSION_STORAGE_KEY = 'pp_user'
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000
+
+type StoredSession = {
+  user: AuthUser
+  loginAt: number
+}
+
 interface AuthContextValue {
   user: AuthUser | null
   isLoading: boolean
@@ -13,20 +21,55 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
+  const [loginAt, setLoginAt] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+
+  const clearSession = useCallback(() => {
+    setUser(null)
+    setLoginAt(null)
+    localStorage.removeItem(SESSION_STORAGE_KEY)
+  }, [])
+
+  const isSessionExpired = useCallback((startedAt: number) => {
+    return Date.now() - startedAt >= SESSION_TTL_MS
+  }, [])
 
   // Restore session from localStorage on mount
   useEffect(() => {
-    const stored = localStorage.getItem('pp_user')
+    const stored = localStorage.getItem(SESSION_STORAGE_KEY)
     if (stored) {
       try {
-        setUser(JSON.parse(stored) as AuthUser)
+        const parsed = JSON.parse(stored) as StoredSession
+        if (parsed?.user && typeof parsed.loginAt === 'number' && !isSessionExpired(parsed.loginAt)) {
+          setUser(parsed.user)
+          setLoginAt(parsed.loginAt)
+        } else {
+          clearSession()
+        }
       } catch {
-        localStorage.removeItem('pp_user')
+        clearSession()
       }
     }
     setIsLoading(false)
-  }, [])
+  }, [clearSession, isSessionExpired])
+
+  useEffect(() => {
+    if (!user || !loginAt) return
+
+    const remainingMs = SESSION_TTL_MS - (Date.now() - loginAt)
+    if (remainingMs <= 0) {
+      clearSession()
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      clearSession()
+    }, remainingMs)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [clearSession, loginAt, user])
 
   const login = useCallback(async (username: string, pin: string): Promise<{ error: string | null }> => {
     setIsLoading(true)
@@ -50,8 +93,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         balance: (data.balance as number) ?? 0
       }
 
+      const startedAt = Date.now()
       setUser(authUser)
-      localStorage.setItem('pp_user', JSON.stringify(authUser))
+      setLoginAt(startedAt)
+      localStorage.setItem(
+        SESSION_STORAGE_KEY,
+        JSON.stringify({ user: authUser, loginAt: startedAt } satisfies StoredSession)
+      )
       return { error: null }
     } catch (err) {
       console.error('[Auth] Login error:', err)
@@ -62,10 +110,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const logout = useCallback(async () => {
-    setUser(null)
-    localStorage.removeItem('pp_user')
+    clearSession()
     await supabase.auth.signOut().catch(() => {})
-  }, [])
+  }, [clearSession])
 
   return (
     <AuthContext.Provider value={{ user, isLoading, login, logout }}>

@@ -44,10 +44,12 @@ export default function BottomNav() {
           >
             {({ isActive }) => (
               <>
-                <Icon
-                  size={22}
-                  strokeWidth={isActive ? 2.5 : 1.8}
-                />
+                <span className="h-6 w-6 flex items-center justify-center">
+                  <Icon
+                    size={to === '/gastos' ? 24 : 22}
+                    strokeWidth={isActive ? 2.5 : 1.8}
+                  />
+                </span>
                 <span className="text-[10px] font-medium truncate">{label}</span>
               </>
             )}
